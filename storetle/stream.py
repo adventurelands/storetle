@@ -426,6 +426,19 @@ class StreamReader:
         raw = self._read_chunk(ci)[wi]
         return _decode_doc(raw)
 
+    def get_text(self, doc_idx: int):
+        """Return extracted plain text (no tags) for a single document."""
+        from .text import decode_text
+        ci, wi = self._locate(doc_idx)
+        return decode_text(self._read_chunk(ci)[wi])
+
+    def iter_text(self):
+        """Yield extracted plain text for every document, in order."""
+        from .text import decode_text
+        for ci in range(len(self._index)):
+            for raw in self._read_chunk(ci):
+                yield decode_text(raw)
+
     def __getitem__(self, key):
         if isinstance(key, int):
             return self.get(key)

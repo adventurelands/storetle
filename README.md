@@ -73,6 +73,35 @@ storetle to-warc   archive.storetle out.warc.gz
 storetle train     my_corpus/ --output my.bin     # domain-specific dictionary
 ```
 
+## Hosted corpora — free
+
+**Simple English Wikipedia, complete** — 267,503 articles, 10.06 GB of HTML
+in 843 MB, snapshot 2025-03-20, CC-BY-SA-4.0. Six self-contained shards with
+JSONL metadata indexes (title ↔ doc index) and a SHA-256 manifest:
+
+```
+https://pub-0a9a18b1320f46f794f8374a71aa608b.r2.dev/simplewiki/manifest.json
+```
+
+Pull one article out of a 100+ MB shard, by index, in ~2 seconds:
+
+```bash
+storetle get https://pub-0a9a18b1320f46f794f8374a71aa608b.r2.dev/simplewiki/simplewiki-20250320-0005.storetle 11244            # Albert Einstein, full HTML
+storetle get https://pub-0a9a18b1320f46f794f8374a71aa608b.r2.dev/simplewiki/simplewiki-20250320-0005.storetle 11244 --text     # …as clean plain text
+```
+
+Find a title's index by grepping the shard's `.index.jsonl`. More corpora
+(arXiv, PubMed Central OA) coming.
+
+## Plain text extraction (v0.2.2)
+
+`--text` on `get`/`unpack` (and `get_text()`/`iter_text()` in the API)
+extracts tag-stripped clean text **without re-parsing HTML** — the encoding
+already separates structure from content, so text extraction is a walk over
+the structure opcodes that keeps text nodes, drops script/style bodies, and
+emits newlines at block boundaries. A 383 KB Wikipedia article becomes 39 KB
+of readable text.
+
 ## Remote archives (v0.2.1)
 
 `get`, `info`, and `unpack` accept URLs. Opening an archive costs a few KB

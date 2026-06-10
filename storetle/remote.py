@@ -152,6 +152,23 @@ class RemoteReader:
             for raw in self._load_chunk(ci):
                 yield _decode_doc(raw)
 
+    def get_text(self, idx):
+        """Return extracted plain text (no tags) for a single document."""
+        from .text import decode_text
+        if idx < 0:
+            idx += self.doc_count
+        if not 0 <= idx < self.doc_count:
+            raise IndexError('doc %d out of range (%d docs)' % (idx, self.doc_count))
+        ci = self._locate(idx)
+        return decode_text(self._load_chunk(ci)[idx - self._cum[ci]])
+
+    def iter_text(self):
+        """Yield extracted plain text for every document, in order."""
+        from .text import decode_text
+        for ci in range(len(self._index)):
+            for raw in self._load_chunk(ci):
+                yield decode_text(raw)
+
     def info(self):
         comp = self._chunk_ends[-1] - self._index[0][0] if self._index else 0
         return {

@@ -68,17 +68,21 @@ def _open_reader(src):
 
 
 def cmd_unpack(args):
+    text = '--text' in args
+    args = [a for a in args if a != '--text']
     if len(args) < 2:
-        print('Usage: storetle unpack <file-or-url> <output_folder>')
+        print('Usage: storetle unpack <file-or-url> <output_folder> [--text]')
         sys.exit(1)
     src = args[0]
     dst = Path(args[1])
     dst.mkdir(parents=True, exist_ok=True)
 
+    ext = 'txt' if text else 'html'
     with _open_reader(src) as r:
-        print(f'Extracting {r.doc_count} documents to {dst}/')
-        for i, doc in enumerate(r):
-            out = dst / f'doc_{i:06d}.html'
+        print(f'Extracting {r.doc_count} documents to {dst}/ as .{ext}')
+        docs = r.iter_text() if text else iter(r)
+        for i, doc in enumerate(docs):
+            out = dst / f'doc_{i:06d}.{ext}'
             out.write_bytes(doc)
             if (i + 1) % 100 == 0:
                 print(f'  {i+1}/{r.doc_count}...')
@@ -110,14 +114,18 @@ def cmd_info(args):
 
 
 def cmd_get(args):
+    text = '--text' in args
+    args = [a for a in args if a != '--text']
     if len(args) < 2:
-        print('Usage: storetle get <file-or-url> <index>')
+        print('Usage: storetle get <file-or-url> <index> [--text]')
         sys.exit(1)
     with _open_reader(args[0]) as r:
         try:
             idx = int(args[1])
-            doc = r[idx]
+            doc = r.get_text(idx) if text else r[idx]
             sys.stdout.buffer.write(doc)
+            if text:
+                sys.stdout.buffer.write(b'\n')
         except (IndexError, ValueError) as e:
             print(f'Error: {e}')
             sys.exit(1)
@@ -270,10 +278,11 @@ HELP = """storetle — HTML-aware compression for large document collections
 Commands:
   bench     <folder>                   Benchmark your HTML data vs gzip WARC
   pack      <folder> <output>          Compress a folder → .storetle file
-  unpack    <file-or-url> <out_folder>  Extract a .storetle → HTML files
+  unpack    <file-or-url> <out> [--text] Extract → HTML files (or clean .txt)
   info      <file-or-url>               Show file statistics
   get       <file-or-url> <index>      Extract one doc by index — over HTTP this
-                                       fetches only the containing ~2MB chunk
+                                       fetches only the containing ~2MB chunk.
+                                       Add --text for tag-stripped plain text
   from-warc   <input.warc[.gz]> <out>  Convert WARC → .storetle
   to-warc     <input.storetle> <out>  Convert .storetle → WARC (or .warc.gz)
   warc-encode <input.warc[.gz]> <out> Encode HTML in-place → valid .warc.gz (smaller, standard format)
