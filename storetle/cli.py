@@ -120,33 +120,62 @@ def _verified_extract(html_bytes):
         sys.exit(1)
 
 
+def _resolve_sources(src):
+    """A local file or URL → [itself]; a corpus name → all its shard URLs."""
+    if _is_url(src) or Path(src).exists():
+        return [src]
+    from .registry import load_registry
+    try:
+        reg = load_registry()
+    except Exception as e:
+        print(f"Error: '{src}' is not a file or URL, and the corpus "
+              f'registry could not be fetched ({e})', file=sys.stderr)
+        sys.exit(1)
+    if src in reg:
+        e = reg[src]
+        base = e['base'].rstrip('/')
+        return [f'{base}/{s}' for s in e['shards']]
+    print(f"Error: '{src}' is not a file, URL, or known corpus.\n"
+          f'Known corpora: {", ".join(sorted(reg))}   (see: storetle corpora)',
+          file=sys.stderr)
+    sys.exit(1)
+
+
 def cmd_unpack(args):
     text = '--text' in args
     verified = '--verified' in args
     args = [a for a in args if a not in ('--text', '--verified')]
     if len(args) < 2:
-        print('Usage: storetle unpack <file-or-url> <output_folder> [--text|--verified]')
+        print('Usage: storetle unpack <file|url|corpus> <output_folder> [--text|--verified]\n'
+              '       Extracts EVERY document. For one document, use: storetle get')
         sys.exit(1)
-    src = args[0]
+    srcs = _resolve_sources(args[0])
     dst = Path(args[1])
     dst.mkdir(parents=True, exist_ok=True)
 
     ext = 'txt' if (text or verified) else 'html'
-    with _open_reader(src) as r:
-        label = 'verified plaintext' if verified else ext
-        print(f'Extracting {r.doc_count} documents to {dst}/ as {label}')
-        if verified:
-            docs = (_verified_extract(d) for d in r)
-        elif text:
-            docs = r.iter_text()
-        else:
-            docs = iter(r)
-        for i, doc in enumerate(docs):
-            out = dst / f'doc_{i:06d}.{ext}'
-            out.write_bytes(doc)
-            if (i + 1) % 100 == 0:
-                print(f'  {i+1}/{r.doc_count}...')
-    print(f'Done: {r.doc_count} files written to {dst}/')
+    label = 'verified plaintext' if verified else ext
+    i = 0
+    for sno, src in enumerate(srcs):
+        with _open_reader(src) as r:
+            if sno == 0:
+                scope = f' (shard 1/{len(srcs)})' if len(srcs) > 1 else ''
+                print(f'Extracting to {dst}/ as {label}{scope} — '
+                      f'{r.doc_count} docs in first source')
+            elif len(srcs) > 1:
+                print(f'  shard {sno+1}/{len(srcs)} ({r.doc_count} docs)...')
+            if verified:
+                docs = (_verified_extract(d) for d in r)
+            elif text:
+                docs = r.iter_text()
+            else:
+                docs = iter(r)
+            for doc in docs:
+                (dst / f'doc_{i:06d}.{ext}').write_bytes(doc)
+                i += 1
+                if i % 1000 == 0:
+                    print(f'  {i}...')
+    print(f'Done: {i} files written to {dst}/')
 
 
 def cmd_info(args):
