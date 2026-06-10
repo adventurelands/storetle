@@ -122,7 +122,7 @@ def _verified_extract(html_bytes):
 
 def _resolve_sources(src):
     """A local file or URL → [itself]; a corpus name → all its shard URLs."""
-    if _is_url(src) or Path(src).exists():
+    if _is_url(src) or Path(src).is_file():
         return [src]
     from .registry import load_registry
     try:
@@ -228,7 +228,7 @@ def cmd_get(args):
         sys.exit(1)
 
     src, ref = args[0], ' '.join(args[1:])
-    if not _is_url(src) and not Path(src).exists():
+    if not _is_url(src) and not Path(src).is_file():
         # treat as a named corpus from the public registry
         from .registry import resolve
         try:
