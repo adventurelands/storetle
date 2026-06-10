@@ -78,7 +78,8 @@ storetle train     my_corpus/ --output my.bin     # domain-specific dictionary
 ```bash
 storetle corpora                                  # list what's available
 storetle get wiki "Albert Einstein" --text        # one article, by name, ~2s
-storetle get wiki-text "Black hole"               # from the clean-text edition
+storetle search copyright "brown eyed girl"       # find records by title
+storetle get copyright "Beyond the sea" --text    # a 1995 catalog assignment
 ```
 
 Corpus names resolve through a public registry
@@ -97,7 +98,16 @@ snapshot 2025-03-20, CC-BY-SA-4.0):
 All under `https://data.davisbrief.com/simplewiki/` with JSONL metadata
 indexes and a SHA-256 manifest. The entire text of Simple English Wikipedia
 in 196 MB, where any article is one ~2 MB range request away — that's the
-point of the format. More corpora (arXiv, PubMed Central OA) coming.
+point of the format.
+
+**US Copyright Office public records** (5,929,094 documents, snapshot
+2026-01, public domain): every recordation (catalog assignments, transfers,
+security interests — 15.3M source rows grouped into 658,596 documents) plus
+4.5M musical-work and 760K sound-recording registrations, parsed from the
+official data.copyright.gov bulk files with per-record validation
+(~2K malformed records quarantined, stats in the manifest). Under
+`https://data.davisbrief.com/copyright/`. More corpora (arXiv, PubMed
+Central OA) coming.
 
 ## Plain text extraction (v0.2.2)
 
