@@ -1,0 +1,38 @@
+[workspace]
+members = [".", "storetle-wasm"]
+resolver = "2"
+
+[package]
+name = "storetle"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Reader for the .storetle HTML archive format (container parsing, zstd-with-dictionary decompression, NodeOp HTML reconstruction)"
+
+[lib]
+name = "storetle"
+path = "src/lib.rs"
+
+[[bin]]
+name = "storetle-rs"
+path = "src/bin/storetle-rs.rs"
+required-features = ["zstd-native"]
+
+[features]
+default = ["zstd-native"]
+# Native backend: the `zstd` crate (links libzstd C code). Fast, full-featured.
+zstd-native = ["dep:zstd"]
+# Pure-Rust backend: `ruzstd`. Used for wasm32-unknown-unknown builds where
+# zstd-sys is painful. Supports ZDICT-format dictionaries.
+zstd-pure = ["dep:ruzstd"]
+
+[dependencies]
+zstd = { version = "0.13", optional = true }
+ruzstd = { version = "0.8", optional = true }
+
+[dev-dependencies]
+
+# Used by the storetle-wasm member (wasm-pack --release).
+[profile.release]
+opt-level = "s"
+lto = true

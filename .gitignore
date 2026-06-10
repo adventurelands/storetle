@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+*.pyo
+*.bak*
+*.egg-info/
+dist/
+build/
+.DS_Store
+
+# local test corpora
+stress_data/
+fresh_data/
+large_corpus/
+diverse_corpus/
+corpus3/
+dict_training_cache/
+testfiles/
+testfiles_unpacked/
+
+# legacy extensions
+*.cubestream
+*.cubepack
+
+# rust / wasm  (web/pkg IS committed — it's the demo's build output)
+rust/target/
+node_modules/
+
+# archives (fixtures are explicitly allowed)
+*.storetle
+!rust/tests/fixtures/*.storetle
+!web/*.storetle
