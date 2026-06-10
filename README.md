@@ -73,6 +73,24 @@ storetle to-warc   archive.storetle out.warc.gz
 storetle train     my_corpus/ --output my.bin     # domain-specific dictionary
 ```
 
+## Remote archives (v0.2.1)
+
+`get`, `info`, and `unpack` accept URLs. Opening an archive costs a few KB
+of Range requests; fetching a document downloads only its ~2MB chunk — no
+server-side code, works against any Range-capable host (R2, S3, GitHub
+Pages, nginx):
+
+```bash
+storetle info https://adventurelands.github.io/storetle/sample.storetle
+storetle get  https://adventurelands.github.io/storetle/sample.storetle 4
+```
+
+```python
+from storetle import RemoteReader
+with RemoteReader('https://host/corpus.storetle') as r:
+    html = r[42]          # one ~2MB range request
+```
+
 ## Python API
 
 ```python

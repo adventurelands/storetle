@@ -8,10 +8,11 @@
 #   benchmark      — compare storetle vs gzip on your own data
 
 from .stream import StreamWriter, StreamReader
+from .remote import RemoteReader
 from .folder import pack, unpack
 
-__version__ = '0.2.0'
-__all__ = ['StreamWriter', 'StreamReader', 'pack', 'unpack', 'benchmark']
+__version__ = '0.2.1'
+__all__ = ['StreamWriter', 'StreamReader', 'RemoteReader', 'pack', 'unpack', 'benchmark']
 
 
 def benchmark(folder, quiet=False):
