@@ -108,6 +108,24 @@ the structure opcodes that keeps text nodes, drops script/style bodies, and
 emits newlines at block boundaries. A 383 KB Wikipedia article becomes 39 KB
 of readable text.
 
+## Formally verified extraction (v0.4.0)
+
+`--verified` on `get`/`unpack` routes plaintext extraction through
+[storetle-verified](https://github.com/adventurelands) — a Lean 4 pipeline
+whose tokenizer, tree builder, and extraction carry machine-checked proofs
+(621 theorems: script/style content provably never reaches output,
+extraction provably deterministic). For corpora where provenance matters
+more than speed.
+
+```bash
+storetle get wiki "Black hole" --verified
+```
+
+Honest notes: it's slower than `--text` (re-parses via the proved WHATWG
+tokenizer), its whitespace conventions differ from the fast extractor, and
+the wheel ships separately (native Lean libraries; not on PyPI — the flag
+explains how to get it if missing).
+
 ## Remote archives (v0.2.1)
 
 `get`, `info`, and `unpack` accept URLs. Opening an archive costs a few KB

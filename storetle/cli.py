@@ -67,20 +67,58 @@ def _open_reader(src):
     return StreamReader(src)
 
 
+def _verified_extract(html_bytes):
+    """Plaintext via the formally verified pipeline (storetle-verified wheel).
+
+    Unlike --text (fast opcode walk in this package), this re-runs the
+    Lean-proved WHATWG tokenizer + tree builder + extraction over the
+    reconstructed HTML — slower, but machine-checked.
+    """
+    try:
+        from storetle_verified import html_to_plaintext
+    except ImportError:
+        print('Error: --verified requires the storetle-verified wheel '
+              '(formally verified extraction pipeline).\n'
+              'It is not on PyPI; build/install it from the storetle-verified '
+              'repository, or omit --verified to use the fast built-in '
+              'extractor (--text).', file=sys.stderr)
+        sys.exit(1)
+    try:
+        # native Lean libraries load lazily on first call
+        return html_to_plaintext(html_bytes).encode('utf-8')
+    except OSError as e:
+        print('Error: storetle-verified is installed but its native '
+              'libraries failed to load.\n'
+              'Most common cause: CPU architecture mismatch between this '
+              'Python and the wheel (e.g. x86_64 Python with arm64 libs).\n'
+              f'Loader said: {e}', file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f'Error: verified pipeline rejected input: {e}', file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_unpack(args):
     text = '--text' in args
-    args = [a for a in args if a != '--text']
+    verified = '--verified' in args
+    args = [a for a in args if a not in ('--text', '--verified')]
     if len(args) < 2:
-        print('Usage: storetle unpack <file-or-url> <output_folder> [--text]')
+        print('Usage: storetle unpack <file-or-url> <output_folder> [--text|--verified]')
         sys.exit(1)
     src = args[0]
     dst = Path(args[1])
     dst.mkdir(parents=True, exist_ok=True)
 
-    ext = 'txt' if text else 'html'
+    ext = 'txt' if (text or verified) else 'html'
     with _open_reader(src) as r:
-        print(f'Extracting {r.doc_count} documents to {dst}/ as .{ext}')
-        docs = r.iter_text() if text else iter(r)
+        label = 'verified plaintext' if verified else ext
+        print(f'Extracting {r.doc_count} documents to {dst}/ as {label}')
+        if verified:
+            docs = (_verified_extract(d) for d in r)
+        elif text:
+            docs = r.iter_text()
+        else:
+            docs = iter(r)
         for i, doc in enumerate(docs):
             out = dst / f'doc_{i:06d}.{ext}'
             out.write_bytes(doc)
@@ -115,9 +153,10 @@ def cmd_info(args):
 
 def cmd_get(args):
     text = '--text' in args
-    args = [a for a in args if a != '--text']
+    verified = '--verified' in args
+    args = [a for a in args if a not in ('--text', '--verified')]
     if len(args) < 2:
-        print('Usage: storetle get <file|url|corpus> <index|title> [--text]\n'
+        print('Usage: storetle get <file|url|corpus> <index|title> [--text|--verified]\n'
               '       storetle get wiki "Albert Einstein" --text')
         sys.exit(1)
 
@@ -134,9 +173,14 @@ def cmd_get(args):
     with _open_reader(src) as r:
         try:
             idx = int(ref)
-            doc = r.get_text(idx) if text else r[idx]
+            if verified:
+                doc = _verified_extract(r[idx])
+            elif text:
+                doc = r.get_text(idx)
+            else:
+                doc = r[idx]
             sys.stdout.buffer.write(doc)
-            if text:
+            if text or verified:
                 sys.stdout.buffer.write(b'\n')
         except (IndexError, ValueError) as e:
             print(f'Error: {e}')
@@ -303,12 +347,13 @@ Commands:
   corpora                              List free hosted corpora
   bench     <folder>                   Benchmark your HTML data vs gzip WARC
   pack      <folder> <output>          Compress a folder → .storetle file
-  unpack    <file-or-url> <out> [--text] Extract → HTML files (or clean .txt)
+  unpack    <src> <out> [--text|--verified]  Extract → HTML, clean .txt, or
+                                       formally verified plaintext
   info      <file-or-url>               Show file statistics
   get       <file|url|corpus> <ref>    Extract one doc by index or title — remote
                                        reads fetch only the containing ~2MB chunk.
-                                       fetches only the containing ~2MB chunk.
-                                       Add --text for tag-stripped plain text
+                                       --text: tag-stripped plain text
+                                       --verified: Lean-proved extraction
   from-warc   <input.warc[.gz]> <out>  Convert WARC → .storetle
   to-warc     <input.storetle> <out>  Convert .storetle → WARC (or .warc.gz)
   warc-encode <input.warc[.gz]> <out> Encode HTML in-place → valid .warc.gz (smaller, standard format)
