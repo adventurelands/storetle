@@ -67,13 +67,32 @@ def _open_reader(src):
     return StreamReader(src)
 
 
+_verified_bridge = None
+
+
 def _verified_extract(html_bytes):
     """Plaintext via the formally verified pipeline (storetle-verified wheel).
 
     Unlike --text (fast opcode walk in this package), this re-runs the
     Lean-proved WHATWG tokenizer + tree builder + extraction over the
     reconstructed HTML — slower, but machine-checked.
+
+    If STORETLE_VERIFIED_PYTHON is set, extraction runs in that interpreter
+    instead — for machines where this Python's CPU architecture doesn't
+    match the verified wheel's native libraries.
     """
+    global _verified_bridge
+    import os as _os
+    if _os.environ.get('STORETLE_VERIFIED_PYTHON'):
+        from .verified_bridge import VerifiedBridge
+        if _verified_bridge is None:
+            _verified_bridge = VerifiedBridge()
+        try:
+            return _verified_bridge.extract(html_bytes)
+        except (ValueError, RuntimeError) as e:
+            print(f'Error: verified bridge failed: {e}', file=sys.stderr)
+            sys.exit(1)
+
     try:
         from storetle_verified import html_to_plaintext
     except ImportError:
@@ -91,6 +110,9 @@ def _verified_extract(html_bytes):
               'libraries failed to load.\n'
               'Most common cause: CPU architecture mismatch between this '
               'Python and the wheel (e.g. x86_64 Python with arm64 libs).\n'
+              'Fix: set STORETLE_VERIFIED_PYTHON to an interpreter matching '
+              'the libraries (plus STORETLE_VERIFIED_PYTHONPATH to the '
+              'directory containing storetle_verified, if needed).\n'
               f'Loader said: {e}', file=sys.stderr)
         sys.exit(1)
     except ValueError as e:

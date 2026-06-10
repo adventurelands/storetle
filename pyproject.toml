@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "storetle"
-version = "0.4.0"
+version = "0.4.1"
 description = "HTML-aware compression for document corpora — solid-archive ratios with random access"
 readme = "README.md"
 requires-python = ">=3.8"
