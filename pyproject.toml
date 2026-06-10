@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "storetle"
+version = "0.2.0"
+description = "HTML-aware compression for document corpora — solid-archive ratios with random access"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Davis Brief", email = "davis@team8.co" }]
+keywords = ["html", "compression", "warc", "web-archive", "corpus", "dataset", "streaming"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: System :: Archiving :: Compression",
+    "Programming Language :: Python :: 3",
+]
+
+# No hard Python dependencies — stdlib + system libzstd via ctypes.
+# lxml is optional but strongly recommended for encoding throughput.
+dependencies = []
+
+[project.optional-dependencies]
+fast = ["lxml"]
+
+[project.urls]
+Homepage = "https://github.com/adventurelands/storetle"
+Specification = "https://github.com/adventurelands/storetle/blob/main/FORMAT.md"
+
+[project.scripts]
+storetle = "storetle.cli:main"
+
+[tool.setuptools]
+packages = ["storetle"]
+
+[tool.setuptools.package-data]
+storetle = ["cube_dict_v10.bin"]

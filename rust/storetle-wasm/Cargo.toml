@@ -1,0 +1,13 @@
+[package]
+name = "storetle-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "WebAssembly bindings for the storetle .storetle reader (pure-Rust zstd via ruzstd)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+storetle = { path = "..", default-features = false, features = ["zstd-pure"] }
+wasm-bindgen = "0.2"

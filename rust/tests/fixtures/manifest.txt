@@ -1,0 +1,7 @@
+basic.doc_count=12
+basic.chunk_count=1
+multi.doc_count=300
+multi.chunk_count=2
+multi.samples=0,1,127,255,256,298,299
+embedded.doc_count=5
+embedded.chunk_count=1
