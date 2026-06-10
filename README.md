@@ -75,23 +75,29 @@ storetle train     my_corpus/ --output my.bin     # domain-specific dictionary
 
 ## Hosted corpora — free
 
-**Simple English Wikipedia, complete** — 267,503 articles, 10.06 GB of HTML
-in 843 MB, snapshot 2025-03-20, CC-BY-SA-4.0. Six self-contained shards with
-JSONL metadata indexes (title ↔ doc index) and a SHA-256 manifest:
-
-```
-https://pub-0a9a18b1320f46f794f8374a71aa608b.r2.dev/simplewiki/manifest.json
-```
-
-Pull one article out of a 100+ MB shard, by index, in ~2 seconds:
-
 ```bash
-storetle get https://pub-0a9a18b1320f46f794f8374a71aa608b.r2.dev/simplewiki/simplewiki-20250320-0005.storetle 11244            # Albert Einstein, full HTML
-storetle get https://pub-0a9a18b1320f46f794f8374a71aa608b.r2.dev/simplewiki/simplewiki-20250320-0005.storetle 11244 --text     # …as clean plain text
+storetle corpora                                  # list what's available
+storetle get wiki "Albert Einstein" --text        # one article, by name, ~2s
+storetle get wiki-text "Black hole"               # from the clean-text edition
 ```
 
-Find a title's index by grepping the shard's `.index.jsonl`. More corpora
-(arXiv, PubMed Central OA) coming.
+Corpus names resolve through a public registry
+(`https://data.davisbrief.com/corpora.json`) — new corpora appear without a
+package update. Title lookup fetches a small index once and caches it.
+
+**Available now — Simple English Wikipedia, complete** (267,503 articles,
+snapshot 2025-03-20, CC-BY-SA-4.0):
+
+| edition | size | contents |
+|---|---|---|
+| `wiki` | 843 MB / 6 shards | full article HTML (10.06 GB raw) |
+| `wiki-text` | 196 MB / 1 file | clean plain text, random access |
+| `…jsonl.zst` | 168 MB | `{"title","url","text"}` per line, for ML pipelines |
+
+All under `https://data.davisbrief.com/simplewiki/` with JSONL metadata
+indexes and a SHA-256 manifest. The entire text of Simple English Wikipedia
+in 196 MB, where any article is one ~2 MB range request away — that's the
+point of the format. More corpora (arXiv, PubMed Central OA) coming.
 
 ## Plain text extraction (v0.2.2)
 
@@ -110,8 +116,8 @@ server-side code, works against any Range-capable host (R2, S3, GitHub
 Pages, nginx):
 
 ```bash
-storetle info https://adventurelands.github.io/storetle/sample.storetle
-storetle get  https://adventurelands.github.io/storetle/sample.storetle 4
+storetle info https://data.davisbrief.com/simplewiki/simplewiki-text-20250320.storetle
+storetle get  wiki "Albert Einstein" --text
 ```
 
 ```python

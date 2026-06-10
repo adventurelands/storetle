@@ -74,5 +74,5 @@ def decode_text(raw: bytes) -> bytes:
 
     text = ''.join(out)
     text = _collapse_space.sub(' ', text)
-    text = _collapse_blank.sub('\n', text)
+    text = _collapse_blank.sub('\n\n', text)   # keep paragraph boundaries
     return text.strip().encode('utf-8')

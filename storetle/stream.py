@@ -84,6 +84,18 @@ def _encode_doc(html):
     return struct.pack('>I', len(ss)) + ss + cs
 
 
+def _encode_text_doc(text):
+    """Encode a plain-text document as a single text node.
+
+    Same container, same decoders: HTML readers see the text (escaped),
+    --text / get_text() return it verbatim. This is how text-mode corpora
+    (e.g. clean-text Wikipedia) are stored without any format change."""
+    if isinstance(text, bytes):
+        text = text.decode('utf-8', errors='replace')
+    ss, cs = _build_streams_class_split([(T_TEXT, None, text)])
+    return struct.pack('>I', len(ss)) + ss + cs
+
+
 def _decode_doc(raw):
     """Decode a v2 blob back to reconstructed HTML bytes."""
     from .decoder import _Stream
@@ -228,6 +240,23 @@ class StreamWriter:
             self._append_parallel(html)
         else:
             self._append_sync(html)
+
+    def append_text(self, text):
+        """Encode and buffer one plain-text document (no HTML parsing)."""
+        if self._workers > 1:
+            # preserve document order: settle in-flight HTML encodes first
+            self._drain_all()
+        if isinstance(text, str):
+            data = text.encode('utf-8', errors='replace')
+        else:
+            data = text
+        self._total_orig += len(data)
+        raw = _encode_text_doc(data)
+        self._chunk_buf.append(raw)
+        self._chunk_bytes += len(raw)
+        self._total_docs  += 1
+        if len(self._chunk_buf) >= CHUNK_DOCS or self._chunk_bytes >= CHUNK_BYTES:
+            self._flush_chunk()
 
     def _append_sync(self, html):
         if isinstance(html, str):
