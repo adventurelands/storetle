@@ -117,11 +117,23 @@ def cmd_get(args):
     text = '--text' in args
     args = [a for a in args if a != '--text']
     if len(args) < 2:
-        print('Usage: storetle get <file-or-url> <index> [--text]')
+        print('Usage: storetle get <file|url|corpus> <index|title> [--text]\n'
+              '       storetle get wiki "Albert Einstein" --text')
         sys.exit(1)
-    with _open_reader(args[0]) as r:
+
+    src, ref = args[0], ' '.join(args[1:])
+    if not _is_url(src) and not Path(src).exists():
+        # treat as a named corpus from the public registry
+        from .registry import resolve
         try:
-            idx = int(args[1])
+            src, ref = resolve(src, ref)
+        except (KeyError, IndexError) as e:
+            print(f'Error: {e}')
+            sys.exit(1)
+
+    with _open_reader(src) as r:
+        try:
+            idx = int(ref)
             doc = r.get_text(idx) if text else r[idx]
             sys.stdout.buffer.write(doc)
             if text:
@@ -129,6 +141,17 @@ def cmd_get(args):
         except (IndexError, ValueError) as e:
             print(f'Error: {e}')
             sys.exit(1)
+
+
+def cmd_corpora(args):
+    from .registry import list_corpora
+    print()
+    for name, info in list_corpora().items():
+        print(f'  {name:12s} {info.get("title","")}  '
+              f'[{info.get("docs","?"):,} docs, {info.get("snapshot","")}, '
+              f'{info.get("license","")}]')
+    print('\n  Usage: storetle get <corpus> <title-or-index> [--text]')
+    print()
 
 
 def cmd_from_warc(args):
@@ -262,6 +285,7 @@ def cmd_warc_decode(args):
 
 COMMANDS = {
     'bench':       cmd_bench,
+    'corpora':     cmd_corpora,
     'pack':        cmd_pack,
     'unpack':      cmd_unpack,
     'info':        cmd_info,
@@ -276,11 +300,13 @@ COMMANDS = {
 HELP = """storetle — HTML-aware compression for large document collections
 
 Commands:
+  corpora                              List free hosted corpora
   bench     <folder>                   Benchmark your HTML data vs gzip WARC
   pack      <folder> <output>          Compress a folder → .storetle file
   unpack    <file-or-url> <out> [--text] Extract → HTML files (or clean .txt)
   info      <file-or-url>               Show file statistics
-  get       <file-or-url> <index>      Extract one doc by index — over HTTP this
+  get       <file|url|corpus> <ref>    Extract one doc by index or title — remote
+                                       reads fetch only the containing ~2MB chunk.
                                        fetches only the containing ~2MB chunk.
                                        Add --text for tag-stripped plain text
   from-warc   <input.warc[.gz]> <out>  Convert WARC → .storetle

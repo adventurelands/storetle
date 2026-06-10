@@ -11,7 +11,7 @@ from .stream import StreamWriter, StreamReader
 from .remote import RemoteReader
 from .folder import pack, unpack
 
-__version__ = '0.2.2'
+__version__ = '0.3.0'
 __all__ = ['StreamWriter', 'StreamReader', 'RemoteReader', 'pack', 'unpack', 'benchmark']
 
 
