@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.storetle viewer</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --panel: #ffffff;
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --accent: #0b6e4f;
+    --border: #e3e1da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 0.7rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.05rem; margin: 0; font-weight: 650; }
+  header h1 code { color: var(--accent); }
+  #status { color: var(--muted); font-size: 0.85rem; }
+  #status.err { color: #b3261e; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #left {
+    width: 310px;
+    min-width: 230px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+  }
+  #drop {
+    margin: 0.8rem;
+    padding: 1rem 0.8rem;
+    border: 1.5px dashed #b9b5a9;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  #drop.hover { background: #eef7f2; border-color: var(--accent); }
+  #drop strong { color: var(--ink); }
+  #controls { padding: 0 0.8rem 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; font-size: 0.8rem; }
+  button, label.filebtn {
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fbfaf7;
+    cursor: pointer;
+  }
+  button:hover, label.filebtn:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { color: #fff; opacity: 0.92; }
+  #dictstate { padding: 0 0.9rem 0.4rem; font-size: 0.75rem; color: var(--muted); }
+  #meta {
+    padding: 0.4rem 0.9rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: none;
+  }
+  #meta.show { display: block; }
+  #doclist { flex: 1; overflow-y: auto; margin: 0; padding: 0.3rem 0; list-style: none; }
+  #doclist li {
+    padding: 0.35rem 0.9rem;
+    font-size: 0.83rem;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #doclist li:hover { background: #f1efe9; }
+  #doclist li.active { background: #e7f3ee; border-left-color: var(--accent); font-weight: 600; }
+  #doclist li.note { color: var(--muted); cursor: default; font-style: italic; }
+  #right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #viewbar {
+    padding: 0.45rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    background: var(--panel);
+    font-size: 0.85rem;
+  }
+  #viewbar .title { color: var(--muted); flex: 1; }
+  #viewer { flex: 1; min-height: 0; position: relative; }
+  #frame, #source {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
+  }
+  #source {
+    display: none;
+    margin: 0;
+    overflow: auto;
+    padding: 1rem;
+    font: 0.78rem/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+    white-space: pre;
+    color: #24292f;
+  }
+  #empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1><code>.storetle</code> viewer <span style="font-weight:400;color:var(--muted)">— wasm reader demo</span></h1>
+  <span id="status">loading wasm…</span>
+</header>
+<main>
+  <div id="left">
+    <div id="drop">
+      <strong>Drop a .storetle file here</strong><br>
+      or click to choose<br>
+      <span style="font-size:0.75rem">(drop <code>cube_dict_v10.bin</code> too, if the file needs it)</span>
+    </div>
+    <div id="controls">
+      <button id="loadsample" class="primary">Load sample</button>
+      <label class="filebtn" for="dictfile">Choose dictionary…</label>
+    </div>
+    <div id="dictstate">dictionary: checking…</div>
+    <input type="file" id="archfile" accept=".storetle">
+    <input type="file" id="dictfile">
+    <div id="meta"></div>
+    <ul id="doclist"></ul>
+  </div>
+  <div id="right">
+    <div id="viewbar">
+      <span class="title" id="doctitle">no document selected</span>
+      <button id="togglesrc" disabled>View source</button>
+    </div>
+    <div id="viewer">
+      <!-- sandbox with no tokens: no scripts, no forms, no same-origin access -->
+      <iframe id="frame" sandbox title="rendered document"></iframe>
+      <pre id="source"></pre>
+      <div id="empty">Load an archive, then click a document.</div>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import init, { WasmReader } from './pkg/storetle_wasm.js';
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status');
+
+let reader = null;          // WasmReader
+let archiveBytes = null;    // Uint8Array of the current archive
+let archiveName = '';
+let dictBytes = null;       // Uint8Array of the external dictionary (or null)
+let dictLabel = 'none';
+let currentDoc = -1;
+let showingSource = false;
+
+const MAX_LIST = 2000;      // cap rendered list entries
+
+function setStatus(msg, isErr = false) {
+  statusEl.textContent = msg;
+  statusEl.className = isErr ? 'err' : '';
+}
+
+function setDictState() {
+  $('dictstate').textContent = 'dictionary: ' + dictLabel;
+}
+
+function openArchive() {
+  if (!archiveBytes) return;
+  try {
+    // WasmReader takes ownership of copies of both buffers.
+    reader = new WasmReader(archiveBytes, dictBytes ?? undefined);
+  } catch (e) {
+    reader = null;
+    setStatus(`failed to open ${archiveName}: ${e.message ?? e}`, true);
+    return;
+  }
+  const n = reader.doc_count;
+  const dictNote = reader.has_embedded_dict
+    ? 'embedded dictionary'
+    : (reader.has_dict ? 'external dictionary' : 'NO dictionary — decoding will fail');
+  $('meta').textContent =
+    `${archiveName} — ${n} document${n === 1 ? '' : 's'}, ${reader.chunk_count} chunk${reader.chunk_count === 1 ? '' : 's'}, ${dictNote}`;
+  $('meta').className = 'show';
+  setStatus(`opened ${archiveName}`);
+
+  const list = $('doclist');
+  list.textContent = '';
+  const shown = Math.min(n, MAX_LIST);
+  for (let i = 0; i < shown; i++) {
+    const li = document.createElement('li');
+    li.textContent = `doc ${i}`;
+    li.dataset.idx = i;
+    list.appendChild(li);
+  }
+  if (n > MAX_LIST) {
+    const li = document.createElement('li');
+    li.className = 'note';
+    li.textContent = `… ${n - MAX_LIST} more (list capped at ${MAX_LIST})`;
+    list.appendChild(li);
+  }
+  currentDoc = -1;
+  $('doctitle').textContent = 'no document selected';
+  $('togglesrc').disabled = true;
+  $('frame').srcdoc = '';
+  $('source').textContent = '';
+  $('empty').style.display = 'flex';
+}
+
+function showDoc(idx) {
+  if (!reader) return;
+  let html;
+  try {
+    html = reader.get_html(idx);
+  } catch (e) {
+    setStatus(`doc ${idx}: ${e.message ?? e}`, true);
+    return;
+  }
+  currentDoc = idx;
+  for (const li of $('doclist').children) {
+    li.classList.toggle('active', Number(li.dataset.idx) === idx);
+  }
+  $('doctitle').textContent = `doc ${idx} — ${html.length.toLocaleString()} chars`;
+  $('togglesrc').disabled = false;
+  $('empty').style.display = 'none';
+  // sandboxed iframe: empty sandbox attribute = no scripts, no same-origin
+  $('frame').srcdoc = html;
+  $('source').textContent = html;
+  setStatus(`showing doc ${idx} of ${archiveName}`);
+}
+
+function setSourceMode(on) {
+  showingSource = on;
+  $('source').style.display = on ? 'block' : 'none';
+  $('frame').style.display = on ? 'none' : 'block';
+  $('togglesrc').textContent = on ? 'View rendered' : 'View source';
+}
+
+async function fileToBytes(file) {
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+function takeFile(file) {
+  if (file.name.endsWith('.storetle')) {
+    fileToBytes(file).then((b) => {
+      archiveBytes = b;
+      archiveName = file.name;
+      openArchive();
+    });
+  } else {
+    // anything else is treated as a dictionary
+    fileToBytes(file).then((b) => {
+      dictBytes = b;
+      dictLabel = `${file.name} (${b.length.toLocaleString()} bytes)`;
+      setDictState();
+      if (archiveBytes) openArchive();   // re-open with the new dictionary
+    });
+  }
+}
+
+// --- wire up UI ---
+const drop = $('drop');
+drop.addEventListener('click', () => $('archfile').click());
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('hover'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('hover'));
+drop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  drop.classList.remove('hover');
+  for (const f of e.dataTransfer.files) takeFile(f);
+});
+$('archfile').addEventListener('change', (e) => { for (const f of e.target.files) takeFile(f); });
+$('dictfile').addEventListener('change', (e) => { for (const f of e.target.files) takeFile(f); });
+$('doclist').addEventListener('click', (e) => {
+  const li = e.target.closest('li');
+  if (li && li.dataset.idx !== undefined) showDoc(Number(li.dataset.idx));
+});
+$('togglesrc').addEventListener('click', () => setSourceMode(!showingSource));
+$('loadsample').addEventListener('click', async () => {
+  try {
+    setStatus('fetching sample.storetle…');
+    const resp = await fetch('./sample.storetle');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    archiveBytes = new Uint8Array(await resp.arrayBuffer());
+    archiveName = 'sample.storetle';
+    openArchive();
+  } catch (e) {
+    setStatus(`could not load sample: ${e.message ?? e}`, true);
+  }
+});
+
+// --- boot ---
+await init();
+setStatus('wasm ready — load an archive');
+
+// Pre-fill the dictionary from ./cube_dict_v10.bin if the server has it.
+try {
+  const resp = await fetch('./cube_dict_v10.bin');
+  if (resp.ok) {
+    dictBytes = new Uint8Array(await resp.arrayBuffer());
+    dictLabel = `cube_dict_v10.bin (auto-fetched, ${dictBytes.length.toLocaleString()} bytes)`;
+  } else {
+    dictLabel = 'none (cube_dict_v10.bin not served) — choose one if your file needs it';
+  }
+} catch {
+  dictLabel = 'none — choose one if your file needs it';
+}
+setDictState();
+</script>
+</body>
+</html>

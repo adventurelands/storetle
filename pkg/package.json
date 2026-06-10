@@ -1,0 +1,17 @@
+{
+  "name": "storetle-wasm",
+  "type": "module",
+  "description": "WebAssembly bindings for the storetle .storetle reader (pure-Rust zstd via ruzstd)",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "storetle_wasm_bg.wasm",
+    "storetle_wasm.js",
+    "storetle_wasm.d.ts"
+  ],
+  "main": "storetle_wasm.js",
+  "types": "storetle_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
