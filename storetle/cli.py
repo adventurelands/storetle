@@ -54,16 +54,28 @@ def cmd_pack(args):
     print(f'Output: {output}')
 
 
+def _is_url(s):
+    return s.startswith('http://') or s.startswith('https://')
+
+
+def _open_reader(src):
+    """Open a local path with StreamReader or a URL with RemoteReader."""
+    if _is_url(src):
+        from .remote import RemoteReader
+        return RemoteReader(src)
+    from .stream import StreamReader
+    return StreamReader(src)
+
+
 def cmd_unpack(args):
     if len(args) < 2:
-        print('Usage: storetle unpack <file.storetle> <output_folder>')
+        print('Usage: storetle unpack <file-or-url> <output_folder>')
         sys.exit(1)
-    from .stream import StreamReader
     src = args[0]
     dst = Path(args[1])
     dst.mkdir(parents=True, exist_ok=True)
 
-    with StreamReader(src) as r:
+    with _open_reader(src) as r:
         print(f'Extracting {r.doc_count} documents to {dst}/')
         for i, doc in enumerate(r):
             out = dst / f'doc_{i:06d}.html'
@@ -75,15 +87,20 @@ def cmd_unpack(args):
 
 def cmd_info(args):
     if not args:
-        print('Usage: storetle info <file.storetle>')
+        print('Usage: storetle info <file-or-url>')
         sys.exit(1)
-    from .stream import StreamReader
 
     def fmt(n):
         if n < 1048576: return f'{n/1024:.1f}KB'
         return f'{n/1048576:.2f}MB'
 
-    info = StreamReader.info(args[0])
+    if _is_url(args[0]):
+        from .remote import RemoteReader
+        with RemoteReader(args[0]) as r:
+            info = r.info()
+    else:
+        from .stream import StreamReader
+        info = StreamReader.info(args[0])
     print(f'\n  {args[0]}')
     print(f'  Documents:    {info["docs"]:,}')
     print(f'  Chunks:       {info["chunks"]:,}')
@@ -94,10 +111,9 @@ def cmd_info(args):
 
 def cmd_get(args):
     if len(args) < 2:
-        print('Usage: storetle get <file.storetle> <index>')
+        print('Usage: storetle get <file-or-url> <index>')
         sys.exit(1)
-    from .stream import StreamReader
-    with StreamReader(args[0]) as r:
+    with _open_reader(args[0]) as r:
         try:
             idx = int(args[1])
             doc = r[idx]
@@ -254,9 +270,10 @@ HELP = """storetle — HTML-aware compression for large document collections
 Commands:
   bench     <folder>                   Benchmark your HTML data vs gzip WARC
   pack      <folder> <output>          Compress a folder → .storetle file
-  unpack    <file> <output_folder>     Extract a .storetle → HTML files
-  info      <file>                     Show file statistics
-  get       <file> <index>             Extract one document by index (0-based)
+  unpack    <file-or-url> <out_folder>  Extract a .storetle → HTML files
+  info      <file-or-url>               Show file statistics
+  get       <file-or-url> <index>      Extract one doc by index — over HTTP this
+                                       fetches only the containing ~2MB chunk
   from-warc   <input.warc[.gz]> <out>  Convert WARC → .storetle
   to-warc     <input.storetle> <out>  Convert .storetle → WARC (or .warc.gz)
   warc-encode <input.warc[.gz]> <out> Encode HTML in-place → valid .warc.gz (smaller, standard format)
