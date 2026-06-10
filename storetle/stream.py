@@ -480,6 +480,16 @@ class StreamReader:
             for raw in self._read_chunk(ci):
                 yield _decode_doc(raw)
 
+    def iter_raw(self):
+        """Yield encoded (pre-decode) document blobs, in order.
+
+        For bulk pipelines that want to parallelize decoding themselves:
+        feed these to _decode_doc / text.decode_text in worker processes.
+        """
+        for ci in range(len(self._index)):
+            for raw in self._read_chunk(ci):
+                yield raw
+
     def __len__(self):
         return self.doc_count
 

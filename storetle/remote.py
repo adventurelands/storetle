@@ -148,9 +148,47 @@ class RemoteReader:
         return _decode_doc(docs[idx - self._cum[ci]])
 
     def __iter__(self):
-        for ci in range(len(self._index)):
-            for raw in self._load_chunk(ci):
-                yield _decode_doc(raw)
+        for raw in self.iter_raw():
+            yield _decode_doc(raw)
+
+    def iter_raw(self, prefetch=4):
+        """Yield encoded document blobs in order, keeping several chunk
+        fetches in flight over the network while the caller decodes."""
+        from collections import deque
+        from concurrent.futures import ThreadPoolExecutor
+        n = len(self._index)
+        if n == 0:
+            return
+        # bypass the single-chunk cache: each worker fetches independently
+        with ThreadPoolExecutor(max_workers=prefetch) as pool:
+            pending = deque()
+            nxt = 0
+            while nxt < n and len(pending) < prefetch:
+                pending.append(pool.submit(self._fetch_chunk_raw, nxt))
+                nxt += 1
+            while pending:
+                docs = self._parse_chunk(*pending.popleft().result())
+                if nxt < n:
+                    pending.append(pool.submit(self._fetch_chunk_raw, nxt))
+                    nxt += 1
+                for raw in docs:
+                    yield raw
+
+    def _fetch_chunk_raw(self, ci):
+        off = self._index[ci][0]
+        return ci, self._fetch(off, self._chunk_ends[ci] - 1)
+
+    def _parse_chunk(self, ci, raw):
+        dc, _orig, comp_size = struct.unpack_from('>HII', raw, 0)
+        if dc != self._index[ci][1]:
+            raise ValueError('Chunk %d header disagrees with index' % ci)
+        sizes = struct.unpack_from('>%dI' % dc, raw, 10)
+        blob = _decompress(raw[10 + dc * 4: 10 + dc * 4 + comp_size], self._dict)
+        docs, pos = [], 0
+        for s in sizes:
+            docs.append(blob[pos:pos + s])
+            pos += s
+        return docs
 
     def get_text(self, idx):
         """Return extracted plain text (no tags) for a single document."""

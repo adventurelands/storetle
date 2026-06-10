@@ -156,25 +156,41 @@ def cmd_unpack(args):
     ext = 'txt' if (text or verified) else 'html'
     label = 'verified plaintext' if verified else ext
     i = 0
-    for sno, src in enumerate(srcs):
-        with _open_reader(src) as r:
-            if sno == 0:
-                scope = f' (shard 1/{len(srcs)})' if len(srcs) > 1 else ''
-                print(f'Extracting to {dst}/ as {label}{scope} — '
-                      f'{r.doc_count} docs in first source')
-            elif len(srcs) > 1:
-                print(f'  shard {sno+1}/{len(srcs)} ({r.doc_count} docs)...')
-            if verified:
-                docs = (_verified_extract(d) for d in r)
-            elif text:
-                docs = r.iter_text()
-            else:
-                docs = iter(r)
-            for doc in docs:
-                (dst / f'doc_{i:06d}.{ext}').write_bytes(doc)
-                i += 1
-                if i % 1000 == 0:
-                    print(f'  {i}...')
+    t0 = __import__('time').time()
+
+    pool = None
+    if not verified:
+        # decode is CPU-bound pure Python — fan it across cores while the
+        # reader prefetches the next chunk over the network
+        from multiprocessing import Pool, cpu_count
+        pool = Pool(min(8, max(1, cpu_count() - 1)))
+        from .stream import _decode_doc
+        from .text import decode_text
+        decode_fn = decode_text if text else _decode_doc
+
+    try:
+        for sno, src in enumerate(srcs):
+            with _open_reader(src) as r:
+                if sno == 0:
+                    scope = f' (shard 1/{len(srcs)})' if len(srcs) > 1 else ''
+                    print(f'Extracting to {dst}/ as {label}{scope} — '
+                          f'{r.doc_count} docs in first source')
+                elif len(srcs) > 1:
+                    print(f'  shard {sno+1}/{len(srcs)} ({r.doc_count} docs)...')
+                if verified:
+                    docs = (_verified_extract(d) for d in r)
+                else:
+                    docs = pool.imap(decode_fn, r.iter_raw(), chunksize=32)
+                for doc in docs:
+                    (dst / f'doc_{i:06d}.{ext}').write_bytes(doc)
+                    i += 1
+                    if i % 5000 == 0:
+                        rate = i / max(1e-9, __import__('time').time() - t0)
+                        print(f'  {i}  ({rate:.0f} docs/s)')
+    finally:
+        if pool is not None:
+            pool.terminate()
+            pool.join()
     print(f'Done: {i} files written to {dst}/')
 
 
