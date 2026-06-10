@@ -15,7 +15,7 @@ import struct
 from .decoder import _Stream
 from .encoder import (T_OPEN, T_CLOSE, T_TEXT, T_DOCTYPE,
                       T_COMMENT, T_SELFCLOSE, T_RAWTEXT)
-from .vocab import ID_TO_TAG, SHARED_STRINGS, UNKNOWN_ID
+from .vocab import ID_TO_TAG, ID_TO_ATTR, SHARED_STRINGS, UNKNOWN_ID
 
 _BLOCK_TAGS = frozenset((
     'p', 'div', 'br', 'li', 'ul', 'ol', 'dl', 'dt', 'dd',
@@ -29,6 +29,25 @@ _CELL_TAGS = frozenset(('td', 'th'))
 _collapse_blank = re.compile(r'\n\s*\n+')
 _collapse_space = re.compile(r'[ \t\f\v]+')
 
+# Elements whose entire subtree is navigation/boilerplate, not content.
+# Matched against class tokens (substring) and role attribute values.
+_SKIP_CLASS_SUBSTR = ('navbox', 'catlinks', 'mw-jump', 'printfooter',
+                      'mw-editsection', 'breadcrumb', 'site-nav')
+_SKIP_ROLES = ('navigation',)
+
+
+def _is_boilerplate(attrs):
+    for name, value in attrs:
+        if not value:
+            continue
+        if name == 'role' and value.lower() in _SKIP_ROLES:
+            return True
+        if name == 'class':
+            v = value.lower()
+            if any(s in v for s in _SKIP_CLASS_SUBSTR):
+                return True
+    return False
+
 
 def decode_text(raw: bytes) -> bytes:
     """Extract plain text from one encoded document (the blob stored in a
@@ -39,6 +58,8 @@ def decode_text(raw: bytes) -> bytes:
     ss_data_len = ss_len
 
     out = []
+    depth = 0
+    skip_above = None     # while set, drop text until depth returns here
 
     def boundary(tag):
         if tag in _BLOCK_TAGS:
@@ -54,19 +75,27 @@ def decode_text(raw: bytes) -> bytes:
             tag = cs.read_string(SHARED_STRINGS) if tag_id == UNKNOWN_ID \
                   else ID_TO_TAG.get(tag_id, '')
             ac = ss.read_byte()
+            attrs = []
             for _ in range(ac):
                 aid = ss.read_byte()
-                if aid == UNKNOWN_ID:
-                    cs.read_string(SHARED_STRINGS)   # attr name — discard
-                cs.read_string(SHARED_STRINGS)       # attr value — discard
-            boundary(tag)
+                aname = cs.read_string(SHARED_STRINGS) if aid == UNKNOWN_ID \
+                        else ID_TO_ATTR.get(aid, '')
+                attrs.append((aname, cs.read_string(SHARED_STRINGS)))
+            if nt == T_OPEN:
+                depth += 1
+                if skip_above is None and _is_boilerplate(attrs):
+                    skip_above = depth - 1
+            if skip_above is None:
+                boundary(tag)
 
         elif nt == T_CLOSE:
-            pass  # no payload; block boundary handled at open
+            depth = max(0, depth - 1)
+            if skip_above is not None and depth <= skip_above:
+                skip_above = None
 
         elif nt == T_TEXT:
             t = cs.read_string(SHARED_STRINGS)
-            if t:
+            if t and skip_above is None:
                 out.append(t)
 
         elif nt in (T_RAWTEXT, T_DOCTYPE, T_COMMENT):
