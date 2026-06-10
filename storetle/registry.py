@@ -49,11 +49,21 @@ def _titles_path(corpus_name, entry):
     return local
 
 
+def _norm(s):
+    """Normalize a lookup key: catalog records (MARC) carry trailing
+    '/' ';' '.' ',' punctuation that nobody types."""
+    return s.strip().rstrip('/;,.').strip().lower()
+
+
 def _lookup_title(corpus_name, entry, title):
-    """Resolve a title to (shard_no, doc_idx). Exact, then case-insensitive."""
+    """Resolve a title to (shard_no, doc_idx).
+
+    Match priority: exact > case-insensitive > punctuation-normalized.
+    """
     want = title.strip()
     want_ci = want.lower()
-    ci_hit = None
+    want_norm = _norm(title)
+    ci_hit = norm_hit = None
     with gzip.open(_titles_path(corpus_name, entry), 'rt') as f:
         for line in f:
             name, shard, idx = line.rstrip('\n').rsplit('\t', 2)
@@ -61,9 +71,35 @@ def _lookup_title(corpus_name, entry, title):
                 return int(shard), int(idx)
             if ci_hit is None and name.lower() == want_ci:
                 ci_hit = (int(shard), int(idx))
-    if ci_hit:
-        return ci_hit
-    raise KeyError(f'title not found in corpus "{corpus_name}": {title!r}')
+            elif norm_hit is None and _norm(name) == want_norm:
+                norm_hit = (int(shard), int(idx))
+    hit = ci_hit or norm_hit
+    if hit:
+        return hit
+    raise KeyError(f'title not found in corpus "{corpus_name}": {title!r} '
+                   f'(try: storetle search {corpus_name} "<part of title>")')
+
+
+def search_titles(corpus_name, query, limit=25):
+    """Substring search over a corpus's lookup keys.
+
+    Returns a list of (name, shard_no, doc_idx), at most `limit`.
+    """
+    reg = load_registry()
+    if corpus_name not in reg:
+        raise KeyError(f'unknown corpus {corpus_name!r}; '
+                       f'available: {", ".join(sorted(reg))}')
+    entry = reg[corpus_name]
+    q = _norm(query)
+    hits = []
+    with gzip.open(_titles_path(corpus_name, entry), 'rt') as f:
+        for line in f:
+            name, shard, idx = line.rstrip('\n').rsplit('\t', 2)
+            if q in name.lower():
+                hits.append((name, int(shard), int(idx)))
+                if len(hits) >= limit:
+                    break
+    return hits
 
 
 def resolve(corpus_name, ref):

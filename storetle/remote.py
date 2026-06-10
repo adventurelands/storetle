@@ -88,21 +88,31 @@ class RemoteReader:
     def _fetch_suffix(self, n):
         return self._range_request('bytes=-%d' % n)
 
-    def _range_request(self, range_header):
+    def _range_request(self, range_header, attempts=4):
         req = urllib.request.Request(self._url, headers={
             'Range': range_header,
-            'User-Agent': 'storetle-remote/0.2.1',
+            'User-Agent': 'storetle-remote',
         })
-        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-            if resp.status not in (200, 206):
-                raise IOError('HTTP %d for %s' % (resp.status, self._url))
-            if resp.status == 200 and range_header != 'bytes=0-':
-                raise IOError(
-                    'Server ignored Range request — remote access needs a '
-                    'server that supports HTTP Range (got full response)')
-            data = resp.read()
-        self.bytes_fetched += len(data)
-        return data
+        delay = 1.0
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                    if resp.status not in (200, 206):
+                        raise IOError('HTTP %d for %s' % (resp.status, self._url))
+                    if resp.status == 200 and range_header != 'bytes=0-':
+                        raise IOError(
+                            'Server ignored Range request — remote access needs '
+                            'a server that supports HTTP Range (got full response)')
+                    data = resp.read()
+                self.bytes_fetched += len(data)
+                return data
+            except (TimeoutError, ConnectionError, OSError) as e:
+                # transient network wobble / rate limiting — back off and retry
+                if attempt == attempts - 1:
+                    raise
+                import time as _time
+                _time.sleep(delay)
+                delay *= 2
 
     # -- document access ----------------------------------------------------
 

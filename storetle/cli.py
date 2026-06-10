@@ -254,6 +254,24 @@ def cmd_get(args):
             sys.exit(1)
 
 
+def cmd_search(args):
+    if len(args) < 2:
+        print('Usage: storetle search <corpus> <part-of-title>')
+        sys.exit(1)
+    from .registry import search_titles
+    try:
+        hits = search_titles(args[0], ' '.join(args[1:]))
+    except KeyError as e:
+        print(f'Error: {e}')
+        sys.exit(1)
+    if not hits:
+        print('No matches.')
+        sys.exit(1)
+    for name, shard, idx in hits:
+        print(f'  {idx:>9d}  (shard {shard})  {name}')
+    print(f"\n  Fetch one:  storetle get {args[0]} <index> --text")
+
+
 def cmd_corpora(args):
     from .registry import list_corpora
     print()
@@ -397,6 +415,7 @@ def cmd_warc_decode(args):
 COMMANDS = {
     'bench':       cmd_bench,
     'corpora':     cmd_corpora,
+    'search':      cmd_search,
     'pack':        cmd_pack,
     'unpack':      cmd_unpack,
     'info':        cmd_info,
@@ -412,6 +431,7 @@ HELP = """storetle — HTML-aware compression for large document collections
 
 Commands:
   corpora                              List free hosted corpora
+  search    <corpus> <query>           Find documents by title substring
   bench     <folder>                   Benchmark your HTML data vs gzip WARC
   pack      <folder> <output>          Compress a folder → .storetle file
   unpack    <src> <out> [--text|--verified]  Extract → HTML, clean .txt, or
