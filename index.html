@@ -199,8 +199,15 @@ function setDictState() {
 function openArchive() {
   if (!archiveBytes) return;
   try {
+    // If the archive embeds its own dictionary (header bytes 5..9 hold its
+    // size), it MUST be used — an external default would be the wrong dict.
+    // Only pass the external dictionary for archives without one.
+    const embeddedDictSize = archiveBytes.length >= 9
+      ? new DataView(archiveBytes.buffer, archiveBytes.byteOffset + 5, 4).getUint32(0)
+      : 0;
+    const externalDict = embeddedDictSize > 0 ? undefined : (dictBytes ?? undefined);
     // WasmReader takes ownership of copies of both buffers.
-    reader = new WasmReader(archiveBytes, dictBytes ?? undefined);
+    reader = new WasmReader(archiveBytes, externalDict);
   } catch (e) {
     reader = null;
     setStatus(`failed to open ${archiveName}: ${e.message ?? e}`, true);
