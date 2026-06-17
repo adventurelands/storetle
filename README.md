@@ -136,6 +136,38 @@ tokenizer), its whitespace conventions differ from the fast extractor, and
 the wheel ships separately (native Lean libraries; not on PyPI — the flag
 explains how to get it if missing).
 
+## Streaming a corpus, with a Bitcoin-anchored receipt (v0.5.0)
+
+Stream a whole corpus to stdout for training, and walk away with a receipt of
+exactly which bytes you were served:
+
+```bash
+storetle stream uspto --text --verified --receipt | python train.py
+```
+
+`--receipt` writes `uspto.receipt.json` (and `uspto.receipt.ots`). Here is the
+honest description of what it proves, and what it does not:
+
+- When storetle publishes a corpus, **we** compute a Merkle root over the raw
+  bytes we serve, sign it (Ed25519), and anchor that root into Bitcoin via
+  [OpenTimestamps](https://opentimestamps.org). The commitment is a small
+  static file served next to the corpus. Because we anchor at publish time, the
+  Bitcoin block attestation is already confirmed before you ever stream it.
+- On `--receipt`, the wheel re-derives the root from the bytes **it actually
+  received** and checks it against our signed, anchored root. A match means the
+  data you streamed is exactly storetle's published corpus — not a root you or
+  we asserted after the fact. A mismatch fails loudly.
+- Verify it yourself, offline, with no trust in us and no server:
+
+  ```bash
+  ots verify -d <merkle_root_hex> uspto.receipt.ots   # returns the Bitcoin block
+  ```
+
+What it proves: the corpus bytes you trained on are storetle's exact published
+corpus, committed to a root that was signed by us and anchored in Bitcoin. What
+it does not prove: that any particular model consumed them — the training loop
+is yours; storetle is the verifiable data tap, not the trainer.
+
 ## Remote archives (v0.2.1)
 
 `get`, `info`, and `unpack` accept URLs. Opening an archive costs a few KB
