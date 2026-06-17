@@ -100,6 +100,43 @@ def _get_bytes(url, api_key=None, timeout=30):
         return r.read()
 
 
+def _pull(url, api_key=None, timeout=120):
+    """GET a receipt-session pull; returns (body_bytes, headers_dict)."""
+    req = urllib.request.Request(url, method="GET")
+    if api_key:
+        req.add_header("X-API-Key", api_key)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read(), dict(r.headers)
+
+
+def iter_session_docs(corpus, api_base=None, api_key=None, limit=None, batch=256):
+    """Open a receipt session and yield (raw_doc_bytes) as the server streams
+    and hashes them. Yields ('__commit__', commitment_dict) last. The server's
+    commitment covers exactly the docs it served in this session (any stop
+    point) — see receipt_open/pull/finalize on the API."""
+    import struct
+    api = (api_base or DEFAULT_API).rstrip("/")
+    sess = _post(f"{api}/corpus/{corpus}/receipt/open", {}, api_key=api_key)
+    sid, total = sess["session_id"], sess["total"]
+    n = min(total, limit) if limit else total
+    offset = 0
+    while offset < n:
+        take = min(batch, n - offset)
+        body, headers = _pull(
+            f"{api}/corpus/{corpus}/receipt/pull?session={sid}&offset={offset}&n={take}",
+            api_key=api_key)
+        i = 0
+        while i < len(body):
+            ln = struct.unpack(">I", body[i:i + 4])[0]; i += 4
+            yield body[i:i + ln]; i += ln
+        offset = int(headers.get("X-Next-Offset", offset + take))
+        if headers.get("X-Done") == "1":
+            break
+    commit = _post(f"{api}/corpus/{corpus}/receipt/finalize?session={sid}", {},
+                   api_key=api_key)
+    yield ("__commit__", commit)
+
+
 def fetch_commitment(corpus, api_base=None, commitment_url=None):
     """Fetch storetle's published, signed, Bitcoin-anchored commitment for a
     corpus (computed by us over the bytes we serve). Returns (commitment_dict,
