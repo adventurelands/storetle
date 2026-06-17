@@ -145,28 +145,36 @@ exactly which bytes you were served:
 storetle stream uspto --text --verified --receipt | python train.py
 ```
 
-`--receipt` writes `uspto.receipt.json` (and `uspto.receipt.ots`). Here is the
-honest description of what it proves, and what it does not:
+`--receipt` writes a self-contained `uspto.receipt.zip`. Here is the honest
+description of what it proves, and what it does not:
 
-- When storetle publishes a corpus, **we** compute a Merkle root over the raw
-  bytes we serve, sign it (Ed25519), and anchor that root into Bitcoin via
-  [OpenTimestamps](https://opentimestamps.org). The commitment is a small
-  static file served next to the corpus. Because we anchor at publish time, the
-  Bitcoin block attestation is already confirmed before you ever stream it.
-- On `--receipt`, the wheel re-derives the root from the bytes **it actually
-  received** and checks it against our signed, anchored root. A match means the
-  data you streamed is exactly storetle's published corpus — not a root you or
-  we asserted after the fact. A mismatch fails loudly.
-- Verify it yourself, offline, with no trust in us and no server:
+- With `--receipt`, the stream runs **through the storetle API**, which hashes
+  every document as it serves it and accumulates a Merkle root over exactly the
+  bytes it sent you in this session. On finish, storetle signs that root
+  (Ed25519) and anchors it into Bitcoin via
+  [OpenTimestamps](https://opentimestamps.org). The commitment covers precisely
+  what you streamed, at any stop point, computed by us, not asserted by you.
+- The wheel independently re-derives the root from the bytes **it received** and
+  confirms it matches storetle's signed root. A mismatch fails loudly.
+- Verify the bundle yourself with one command (no trust in us required):
 
   ```bash
-  ots verify -d <merkle_root_hex> uspto.receipt.ots   # returns the Bitcoin block
+  storetle verify-receipt uspto.receipt.zip
+  #   storetle signature: VALID
+  #   bitcoin anchor:     CONFIRMED in block N   (PENDING for the first ~hours)
   ```
 
-What it proves: the corpus bytes you trained on are storetle's exact published
-corpus, committed to a root that was signed by us and anchored in Bitcoin. What
-it does not prove: that any particular model consumed them — the training loop
-is yours; storetle is the verifiable data tap, not the trainer.
+  Or by hand: `ots verify -d <merkle_root_hex> commitment.ots` (the `.ots` is in
+  the zip in its native form, so the standard OpenTimestamps tools work directly).
+  The Bitcoin attestation lands within a few hours of streaming; before that the
+  receipt is committed to the OTS calendars and shows `PENDING`.
+
+What it proves: the corpus bytes you trained on were served by storetle and
+committed to a root storetle signed and anchored in Bitcoin. What it does not
+prove: that any particular model consumed them — the training loop is yours;
+storetle is the verifiable data tap, not the trainer.
+
+Verifying needs the verifier extras: `pip install 'storetle[verify]'`.
 
 ## Remote archives (v0.2.1)
 
