@@ -18,15 +18,16 @@ _lib = None
 
 def _try_load():
     global _OK, _lib
-    candidates = [
-        '/usr/local/lib/libzstd.dylib',
-        '/usr/local/lib/libzstd.1.dylib',
-        'libzstd.so',
-        'libzstd.1.so',
-        'libzstd.dylib',
-    ]
+    import ctypes.util as _cu
+    candidates = [c for c in (
+        _cu.find_library("zstd"),            # canonical: let the OS linker locate it
+        'libzstd.so.1', 'libzstd.so',        # Linux
+        'libzstd.1.dylib', 'libzstd.dylib',  # macOS
+        '/usr/local/lib/libzstd.dylib', '/opt/homebrew/lib/libzstd.dylib',
+    ) if c]
     for p in candidates:
-        if os.path.exists(p):
+        # absolute paths must exist; bare names are resolved by the dynamic linker
+        if os.path.exists(p) or not os.path.isabs(p):
             try:
                 lib = ctypes.CDLL(p)
                 # Check key symbols exist
