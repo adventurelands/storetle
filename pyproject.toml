@@ -27,6 +27,7 @@ dependencies = []
 
 [project.optional-dependencies]
 fast = ["lxml"]
+verify = ["pynacl", "opentimestamps-client"]
 
 [project.urls]
 Homepage = "https://github.com/adventurelands/storetle"

@@ -171,3 +171,104 @@ def save_receipt(receipt, path):
             f.write(base64.b64decode(receipt["ots_receipt_b64"]))
         return path, ots_path
     return path, None
+
+
+# fields the server signs, in the canonical order it signs them
+_SIGNED_FIELDS = ("corpus", "doc_count", "merkle_root_hex", "ts", "public_key")
+
+_VERIFY_TXT = """storetle verifiable receipt
+===========================
+
+This bundle proves a corpus was streamed from storetle, committed to a Merkle
+root that storetle signed and anchored into Bitcoin.
+
+Files:
+  commitment.json  - the signed commitment (exact signed fields + signature)
+  commitment.ots   - the OpenTimestamps Bitcoin anchor over merkle_root_hex
+  stream.json      - what this client streamed (doc count, locally-derived root)
+
+Verify (one command):
+  storetle verify-receipt {name}
+
+Verify by hand:
+  1. Ed25519: canonical-JSON(commitment.json["signed"]) checked against
+     commitment.json["signature"] using signed.public_key.
+  2. Bitcoin: ots verify -d {root} commitment.ots
+     (pending now; the block attestation lands within a few hours,
+      then `ots upgrade commitment.ots` completes it).
+"""
+
+
+def write_bundle(path, commit, stream_meta):
+    """Write a .zip receipt bundle. `commit` is the server's finalize response;
+    `stream_meta` is what the client streamed. Keeps the .ots native so stock
+    `ots` works, and delineates exactly which fields were signed."""
+    import base64
+    import zipfile
+    signed = {k: commit[k] for k in _SIGNED_FIELDS if k in commit}
+    commitment = {"signed": signed, "signature": commit.get("signature")}
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("commitment.json", json.dumps(commitment, indent=2, sort_keys=True))
+        if commit.get("ots_receipt_b64"):
+            z.writestr("commitment.ots", base64.b64decode(commit["ots_receipt_b64"]))
+        z.writestr("stream.json", json.dumps(stream_meta, indent=2, sort_keys=True))
+        z.writestr("VERIFY.txt", _VERIFY_TXT.format(
+            name=os.path.basename(path), root=signed.get("merkle_root_hex", "<root>")))
+    return path
+
+
+def verify_bundle(path):
+    """Verify a receipt bundle. Returns (signed_dict, results_dict).
+    results keys: signature, ots_digest_matches_root, bitcoin."""
+    import base64
+    import zipfile
+    with zipfile.ZipFile(path) as z:
+        names = z.namelist()
+        commitment = json.loads(z.read("commitment.json"))
+        ots = z.read("commitment.ots") if "commitment.ots" in names else None
+    signed = commitment["signed"]
+    sig = base64.b64decode(commitment["signature"]) if commitment.get("signature") else None
+    results = {}
+
+    # 1. Ed25519 signature over the exact signed fields
+    if sig is None:
+        results["signature"] = "MISSING"
+    else:
+        try:
+            from nacl.signing import VerifyKey
+            from nacl.exceptions import BadSignatureError
+            canon = json.dumps(signed, sort_keys=True, separators=(",", ":")).encode()
+            try:
+                VerifyKey(base64.b64decode(signed["public_key"])).verify(canon, sig)
+                results["signature"] = "VALID"
+            except BadSignatureError:
+                results["signature"] = "INVALID"
+        except ImportError:
+            results["signature"] = "SKIPPED — install verifiers: pip install 'storetle[verify]'"
+
+    # 2. Bitcoin / OpenTimestamps
+    if not ots:
+        results["bitcoin"] = "no .ots in bundle"
+    else:
+        try:
+            from opentimestamps.core.serialize import BytesDeserializationContext
+            from opentimestamps.core.timestamp import DetachedTimestampFile
+            from opentimestamps.core.notary import (
+                BitcoinBlockHeaderAttestation, PendingAttestation)
+            det = DetachedTimestampFile.deserialize(BytesDeserializationContext(ots))
+            results["ots_digest_matches_root"] = (
+                det.file_digest.hex() == signed.get("merkle_root_hex"))
+            atts = [a for _, a in det.timestamp.all_attestations()]
+            btc = [a for a in atts if isinstance(a, BitcoinBlockHeaderAttestation)]
+            if btc:
+                results["bitcoin"] = f"CONFIRMED in Bitcoin block {btc[0].height}"
+            elif any(isinstance(a, PendingAttestation) for a in atts):
+                results["bitcoin"] = ("PENDING — committed to calendars, block in ~hours "
+                                      "(run: ots upgrade commitment.ots)")
+            else:
+                results["bitcoin"] = "no attestations"
+        except ImportError:
+            results["bitcoin"] = ("SKIPPED — install verifiers: pip install 'storetle[verify]' "
+                                  "(or: ots verify -d %s commitment.ots)"
+                                  % signed.get("merkle_root_hex", ""))
+    return signed, results
