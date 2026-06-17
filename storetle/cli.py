@@ -412,8 +412,152 @@ def cmd_warc_decode(args):
         sys.exit(1)
 
 
+def cmd_stream(args):
+    """Stream a whole corpus to stdout for training, optionally with a
+    Bitcoin-anchored receipt of exactly the bytes you were served.
+
+    Usage:
+      storetle stream <corpus> [--text|--verified] [--limit N]
+                               [--receipt] [--receipt-out FILE]
+                               [--api URL] [--key KEY]
+
+    Pipe it straight into a trainer:
+      storetle stream uspto --text --verified --receipt | python train.py
+
+    --text      tag-stripped plain text (fast, local)
+    --verified  Lean-proved extraction via the verified pipeline
+    --receipt   commit the streamed docs to a Merkle root, anchor it in
+                Bitcoin via the storetle API, and save the receipt locally
+    """
+    import hashlib
+    text = '--text' in args
+    verified = '--verified' in args
+    receipt = '--receipt' in args
+    limit = None
+    api_base = None
+    api_key = None
+    receipt_out = None
+    pos = []
+    i = 0
+    flags = {'--text', '--verified', '--receipt'}
+    while i < len(args):
+        a = args[i]
+        if a in flags:
+            i += 1
+        elif a == '--limit' and i + 1 < len(args):
+            limit = int(args[i + 1]); i += 2
+        elif a == '--api' and i + 1 < len(args):
+            api_base = args[i + 1]; i += 2
+        elif a == '--key' and i + 1 < len(args):
+            api_key = args[i + 1]; i += 2
+        elif a == '--receipt-out' and i + 1 < len(args):
+            receipt_out = args[i + 1]; i += 2
+        else:
+            pos.append(a); i += 1
+
+    if not pos:
+        print('Usage: storetle stream <corpus> [--text|--verified] [--limit N] '
+              '[--receipt] [--api URL] [--key KEY]')
+        sys.exit(1)
+    corpus = pos[0]
+
+    from .registry import resolve, list_corpora
+    try:
+        info = list_corpora().get(corpus, {})
+    except Exception:
+        info = {}
+    total = info.get('docs')
+    n = limit if limit is not None else (total or 0)
+    if not n:
+        print(f'Error: cannot determine doc count for "{corpus}"; pass --limit N',
+              file=sys.stderr)
+        sys.exit(1)
+
+    doc_hashes = []
+    readers = {}
+    emitted = 0
+    try:
+        for gidx in range(n):
+            try:
+                src, ref = resolve(corpus, gidx)
+            except (KeyError, IndexError):
+                break
+            r = readers.get(src)
+            if r is None:
+                r = _open_reader(src).__enter__()
+                readers[src] = r
+            ridx = int(ref)
+            raw = r[ridx]                       # the exact bytes storetle served
+            if isinstance(raw, str):
+                raw = raw.encode()
+            if verified:
+                doc = _verified_extract(raw)
+            elif text:
+                doc = r.get_text(ridx)
+            else:
+                doc = raw
+            if isinstance(doc, str):
+                doc = doc.encode()
+            sys.stdout.buffer.write(doc)
+            sys.stdout.buffer.write(b'\n')
+            if receipt:
+                # commit to the RAW served bytes (provenance is independent of
+                # how you later extract them)
+                doc_hashes.append(hashlib.sha256(raw).hexdigest())
+            emitted += 1
+    finally:
+        for r in readers.values():
+            try:
+                r.__exit__(None, None, None)
+            except Exception:
+                pass
+    sys.stdout.buffer.flush()
+    print(f'[storetle] streamed {emitted} docs from "{corpus}"', file=sys.stderr)
+
+    if receipt:
+        from . import receipt as _rcpt
+        out = receipt_out or f'{corpus}.receipt.json'
+        try:
+            commitment, ots = _rcpt.fetch_commitment(corpus, api_base=api_base)
+            derived = _rcpt.merkle_root(doc_hashes)
+            expected = commitment.get('merkle_root_hex')
+            full = (limit is None) or (emitted == total)
+            match = (derived == expected) and full
+            rc = {
+                'corpus': corpus,
+                'streamed_docs': emitted,
+                'streamed_root_hex': derived,
+                'storetle_commitment': commitment,   # signed + Bitcoin-anchored by storetle
+                'verified': match,
+                'full_corpus': full,
+                'ots_receipt_b64': (__import__('base64').b64encode(ots).decode()
+                                    if ots else None),
+            }
+            jpath, opath = _rcpt.save_receipt(rc, out)
+            if match:
+                print(f'[storetle] VERIFIED: streamed bytes match storetle\'s signed, '
+                      f'Bitcoin-anchored corpus root', file=sys.stderr)
+            elif not full:
+                print(f'[storetle] partial stream ({emitted}/{total}); receipt covers '
+                      f'parent corpus root {expected[:16]}...', file=sys.stderr)
+            else:
+                print(f'[storetle] WARNING: streamed root {derived[:16]}... != published '
+                      f'{str(expected)[:16]}... (bytes do not match our corpus)',
+                      file=sys.stderr)
+            print(f'[storetle] receipt saved: {jpath}'
+                  + (f' (+ {opath})' if opath else ''), file=sys.stderr)
+            if opath:
+                print(f'[storetle] verify offline:  ots verify -d {expected} {opath}',
+                      file=sys.stderr)
+        except Exception as e:
+            print(f'[storetle] receipt unavailable (data streamed fine): {e}',
+                  file=sys.stderr)
+            sys.exit(2)
+
+
 COMMANDS = {
     'bench':       cmd_bench,
+    'stream':      cmd_stream,
     'corpora':     cmd_corpora,
     'search':      cmd_search,
     'pack':        cmd_pack,
@@ -441,6 +585,12 @@ Commands:
                                        reads fetch only the containing ~2MB chunk.
                                        --text: tag-stripped plain text
                                        --verified: Lean-proved extraction
+  stream    <corpus> [options]         Stream a whole corpus to stdout for training
+                                       --text / --verified  extraction mode
+                                       --limit N            stop after N docs
+                                       --receipt            Bitcoin-anchored receipt
+                                                            of exactly what you streamed
+                                       --api URL / --key K  verified API + key
   from-warc   <input.warc[.gz]> <out>  Convert WARC → .storetle
   to-warc     <input.storetle> <out>  Convert .storetle → WARC (or .warc.gz)
   warc-encode <input.warc[.gz]> <out> Encode HTML in-place → valid .warc.gz (smaller, standard format)
@@ -454,6 +604,7 @@ Examples:
   storetle pack      my_crawl/  archive.storetle
   storetle info      archive.storetle
   storetle get       archive.storetle 0
+  storetle stream    uspto --text --verified --receipt | python train.py
   storetle from-warc CC-MAIN.warc.gz  archive.storetle
   storetle to-warc   archive.storetle output.warc.gz
   storetle train     my_corpus/ --output my_domain.bin --size 1024
