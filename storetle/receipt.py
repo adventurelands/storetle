@@ -1,17 +1,20 @@
 # receipt.py — verifiable, Bitcoin-anchored receipts for streamed corpora.
 #
-# When you stream a corpus with `--receipt`, the wheel commits to exactly the
-# bytes it served (a Merkle root over per-doc SHA-256s), hands that root to the
-# storetle verified API, and the API:
-#   1. appends it to a signed, append-only transparency log,
-#   2. anchors the signed tree head into Bitcoin via OpenTimestamps,
-#   3. returns a receipt you can verify offline with `ots verify`.
+# When you stream a corpus with `--receipt`, the stream runs through the
+# storetle API, which:
+#   1. hashes each document as it serves it, building a Merkle root over exactly
+#      the bytes it sent this session (any stop point),
+#   2. signs that root (Ed25519) and anchors it into Bitcoin via OpenTimestamps,
+#   3. returns the signed commitment + .ots receipt.
+# The wheel re-derives the root from the bytes it received and cross-checks, then
+# packages everything into a <corpus>.receipt.zip you can verify offline with
+# `storetle verify-receipt` (or the standard `ots` tools).
 #
 # The receipt proves: "this exact set of documents, in this order, committed to
-# this root, was served at this time and anchored in Bitcoin block N." Nobody
+# this root, was served by storetle and anchored in Bitcoin block N." Nobody
 # (including storetle) can backdate or alter it after the fact.
 #
-# Stdlib only — no third-party deps in the wheel.
+# Stdlib only for streaming; verification uses the [verify] extras.
 
 import hashlib
 import json
