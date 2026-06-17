@@ -467,7 +467,7 @@ def cmd_stream(args):
         # stop point). You pay 2x bandwidth only because you asked for a receipt.
         from . import receipt as _rcpt
         from .text import decode_text
-        out_path = receipt_out or f'{corpus}.receipt.json'
+        out_path = receipt_out or f'{corpus}.receipt.zip'
         got_hashes = []
         emitted = 0
         commit = None
@@ -501,21 +501,19 @@ def cmd_stream(args):
             sys.exit(2)
         derived = _rcpt.merkle_root(got_hashes)
         match = derived == commit.get('merkle_root_hex')
-        rc = {'corpus': corpus, 'streamed_docs': emitted,
-              'streamed_root_hex': derived, 'storetle_commitment': commit,
-              'verified': match, 'ots_receipt_b64': commit.get('ots_receipt_b64')}
-        jpath, opath = _rcpt.save_receipt(rc, out_path)
+        stream_meta = {'corpus': corpus, 'streamed_docs': emitted,
+                       'streamed_root_hex': derived, 'locally_verified': match,
+                       'created': commit.get('ts')}
+        _rcpt.write_bundle(out_path, commit, stream_meta)
         if match:
             print("[storetle] VERIFIED: received bytes match storetle's signed, "
                   "Bitcoin-anchored session root", file=sys.stderr)
         else:
             print(f'[storetle] WARNING: local root {derived[:16]}... != server '
                   f'{str(commit.get("merkle_root_hex"))[:16]}...', file=sys.stderr)
-        print(f'[storetle] receipt: {jpath}' + (f' (+ {opath})' if opath else ''),
+        print(f'[storetle] receipt bundle: {out_path}', file=sys.stderr)
+        print(f'[storetle] verify it:      storetle verify-receipt {out_path}',
               file=sys.stderr)
-        if opath:
-            print(f'[storetle] verify offline:  ots verify -d '
-                  f'{commit["merkle_root_hex"]} {opath}', file=sys.stderr)
         return
 
     # --- no receipt: stream directly from R2 (cheap, no server in the path) ---
@@ -563,9 +561,47 @@ def cmd_stream(args):
     print(f'[storetle] streamed {emitted} docs from "{corpus}"', file=sys.stderr)
 
 
+def cmd_verify_receipt(args):
+    """Verify a storetle receipt bundle (.zip): storetle's signature over the
+    corpus root, and the Bitcoin (OpenTimestamps) anchor.
+
+    Usage: storetle verify-receipt <receipt.zip>
+    """
+    if not args:
+        print('Usage: storetle verify-receipt <receipt.zip>')
+        sys.exit(1)
+    from . import receipt as _rcpt
+    try:
+        signed, results = _rcpt.verify_bundle(args[0])
+    except Exception as e:
+        print(f'Error: cannot read receipt bundle: {e}')
+        sys.exit(1)
+    print(f'corpus:        {signed.get("corpus")}')
+    print(f'documents:     {signed.get("doc_count")}')
+    print(f'merkle root:   {signed.get("merkle_root_hex")}')
+    print(f'streamed at:   {signed.get("ts")}')
+    print()
+    sig = results.get('signature')
+    print(f'storetle signature:   {sig}')
+    if 'ots_digest_matches_root' in results:
+        print(f'.ots binds to root:   {results["ots_digest_matches_root"]}')
+    print(f'bitcoin anchor:       {results.get("bitcoin")}')
+    print()
+    bitcoin = str(results.get('bitcoin', ''))
+    ok = (sig == 'VALID') and results.get('ots_digest_matches_root', True)
+    if ok and bitcoin.startswith('CONFIRMED'):
+        print('RESULT: PASS — storetle-signed and Bitcoin-confirmed.')
+    elif ok:
+        print('RESULT: PASS — storetle-signed (Bitcoin anchor pending confirmation).')
+    else:
+        print('RESULT: FAIL — signature or anchor did not verify.')
+        sys.exit(1)
+
+
 COMMANDS = {
-    'bench':       cmd_bench,
-    'stream':      cmd_stream,
+    'bench':         cmd_bench,
+    'stream':        cmd_stream,
+    'verify-receipt': cmd_verify_receipt,
     'corpora':     cmd_corpora,
     'search':      cmd_search,
     'pack':        cmd_pack,
@@ -598,7 +634,10 @@ Commands:
                                        --limit N            stop after N docs
                                        --receipt            Bitcoin-anchored receipt
                                                             of exactly what you streamed
+                                                            (writes <corpus>.receipt.zip)
                                        --api URL / --key K  verified API + key
+  verify-receipt <receipt.zip>         Verify a receipt: storetle's signature +
+                                       the Bitcoin anchor. (pip install 'storetle[verify]')
   from-warc   <input.warc[.gz]> <out>  Convert WARC → .storetle
   to-warc     <input.storetle> <out>  Convert .storetle → WARC (or .warc.gz)
   warc-encode <input.warc[.gz]> <out> Encode HTML in-place → valid .warc.gz (smaller, standard format)
