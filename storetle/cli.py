@@ -461,6 +461,64 @@ def cmd_stream(args):
         sys.exit(1)
     corpus = pos[0]
 
+    if receipt:
+        # Option A: stream THROUGH the API, which hashes each doc as it serves,
+        # so the receipt commits to exactly what we served this session (any
+        # stop point). You pay 2x bandwidth only because you asked for a receipt.
+        from . import receipt as _rcpt
+        from .text import decode_text
+        out_path = receipt_out or f'{corpus}.receipt.json'
+        got_hashes = []
+        emitted = 0
+        commit = None
+        try:
+            for item in _rcpt.iter_session_docs(corpus, api_base=api_base,
+                                                api_key=api_key, limit=limit):
+                if isinstance(item, tuple) and item and item[0] == '__commit__':
+                    commit = item[1]
+                    break
+                raw = item
+                got_hashes.append(hashlib.sha256(raw).hexdigest())
+                if verified:
+                    doc = _verified_extract(raw)
+                elif text:
+                    doc = decode_text(raw)
+                else:
+                    doc = raw
+                if isinstance(doc, str):
+                    doc = doc.encode()
+                sys.stdout.buffer.write(doc)
+                sys.stdout.buffer.write(b'\n')
+                emitted += 1
+            sys.stdout.buffer.flush()
+        except Exception as e:
+            print(f'[storetle] receipt stream failed: {e}', file=sys.stderr)
+            sys.exit(2)
+        print(f'[storetle] streamed {emitted} docs from "{corpus}" (with receipt)',
+              file=sys.stderr)
+        if not commit:
+            print('[storetle] no commitment returned by server', file=sys.stderr)
+            sys.exit(2)
+        derived = _rcpt.merkle_root(got_hashes)
+        match = derived == commit.get('merkle_root_hex')
+        rc = {'corpus': corpus, 'streamed_docs': emitted,
+              'streamed_root_hex': derived, 'storetle_commitment': commit,
+              'verified': match, 'ots_receipt_b64': commit.get('ots_receipt_b64')}
+        jpath, opath = _rcpt.save_receipt(rc, out_path)
+        if match:
+            print("[storetle] VERIFIED: received bytes match storetle's signed, "
+                  "Bitcoin-anchored session root", file=sys.stderr)
+        else:
+            print(f'[storetle] WARNING: local root {derived[:16]}... != server '
+                  f'{str(commit.get("merkle_root_hex"))[:16]}...', file=sys.stderr)
+        print(f'[storetle] receipt: {jpath}' + (f' (+ {opath})' if opath else ''),
+              file=sys.stderr)
+        if opath:
+            print(f'[storetle] verify offline:  ots verify -d '
+                  f'{commit["merkle_root_hex"]} {opath}', file=sys.stderr)
+        return
+
+    # --- no receipt: stream directly from R2 (cheap, no server in the path) ---
     from .registry import resolve, list_corpora
     try:
         info = list_corpora().get(corpus, {})
@@ -472,8 +530,6 @@ def cmd_stream(args):
         print(f'Error: cannot determine doc count for "{corpus}"; pass --limit N',
               file=sys.stderr)
         sys.exit(1)
-
-    doc_hashes = []
     readers = {}
     emitted = 0
     try:
@@ -484,26 +540,18 @@ def cmd_stream(args):
                 break
             r = readers.get(src)
             if r is None:
-                r = _open_reader(src).__enter__()
-                readers[src] = r
+                r = _open_reader(src).__enter__(); readers[src] = r
             ridx = int(ref)
-            raw = r[ridx]                       # the exact bytes storetle served
-            if isinstance(raw, str):
-                raw = raw.encode()
             if verified:
-                doc = _verified_extract(raw)
+                doc = _verified_extract(r[ridx])
             elif text:
                 doc = r.get_text(ridx)
             else:
-                doc = raw
+                doc = r[ridx]
             if isinstance(doc, str):
                 doc = doc.encode()
             sys.stdout.buffer.write(doc)
             sys.stdout.buffer.write(b'\n')
-            if receipt:
-                # commit to the RAW served bytes (provenance is independent of
-                # how you later extract them)
-                doc_hashes.append(hashlib.sha256(raw).hexdigest())
             emitted += 1
     finally:
         for r in readers.values():
@@ -513,46 +561,6 @@ def cmd_stream(args):
                 pass
     sys.stdout.buffer.flush()
     print(f'[storetle] streamed {emitted} docs from "{corpus}"', file=sys.stderr)
-
-    if receipt:
-        from . import receipt as _rcpt
-        out = receipt_out or f'{corpus}.receipt.json'
-        try:
-            commitment, ots = _rcpt.fetch_commitment(corpus, api_base=api_base)
-            derived = _rcpt.merkle_root(doc_hashes)
-            expected = commitment.get('merkle_root_hex')
-            full = (limit is None) or (emitted == total)
-            match = (derived == expected) and full
-            rc = {
-                'corpus': corpus,
-                'streamed_docs': emitted,
-                'streamed_root_hex': derived,
-                'storetle_commitment': commitment,   # signed + Bitcoin-anchored by storetle
-                'verified': match,
-                'full_corpus': full,
-                'ots_receipt_b64': (__import__('base64').b64encode(ots).decode()
-                                    if ots else None),
-            }
-            jpath, opath = _rcpt.save_receipt(rc, out)
-            if match:
-                print(f'[storetle] VERIFIED: streamed bytes match storetle\'s signed, '
-                      f'Bitcoin-anchored corpus root', file=sys.stderr)
-            elif not full:
-                print(f'[storetle] partial stream ({emitted}/{total}); receipt covers '
-                      f'parent corpus root {expected[:16]}...', file=sys.stderr)
-            else:
-                print(f'[storetle] WARNING: streamed root {derived[:16]}... != published '
-                      f'{str(expected)[:16]}... (bytes do not match our corpus)',
-                      file=sys.stderr)
-            print(f'[storetle] receipt saved: {jpath}'
-                  + (f' (+ {opath})' if opath else ''), file=sys.stderr)
-            if opath:
-                print(f'[storetle] verify offline:  ots verify -d {expected} {opath}',
-                      file=sys.stderr)
-        except Exception as e:
-            print(f'[storetle] receipt unavailable (data streamed fine): {e}',
-                  file=sys.stderr)
-            sys.exit(2)
 
 
 COMMANDS = {
