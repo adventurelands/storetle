@@ -21,6 +21,9 @@ import urllib.request
 import urllib.error
 
 DEFAULT_API = os.environ.get("STORETLE_API", "https://storetle.davisbrief.com")
+# Identify the client honestly (Python's default "Python-urllib" UA gets
+# filtered as a generic scraper; this is a normal product User-Agent).
+_UA = "storetle/0.5 (+https://github.com/adventurelands/storetle)"
 # Commitments are static, signed, Bitcoin-anchored files served next to the
 # corpora (no live server needed). Default to the corpora host.
 COMMITMENT_BASE = os.environ.get("STORETLE_COMMITMENTS", "https://data.davisbrief.com")
@@ -86,6 +89,7 @@ def _post(url, payload, api_key=None, timeout=30):
     body = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", _UA)
     if api_key:
         req.add_header("X-API-Key", api_key)
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -94,6 +98,7 @@ def _post(url, payload, api_key=None, timeout=30):
 
 def _get_bytes(url, api_key=None, timeout=30):
     req = urllib.request.Request(url, method="GET")
+    req.add_header("User-Agent", _UA)
     if api_key:
         req.add_header("X-API-Key", api_key)
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -103,6 +108,7 @@ def _get_bytes(url, api_key=None, timeout=30):
 def _pull(url, api_key=None, timeout=120):
     """GET a receipt-session pull; returns (body_bytes, headers_dict)."""
     req = urllib.request.Request(url, method="GET")
+    req.add_header("User-Agent", _UA)
     if api_key:
         req.add_header("X-API-Key", api_key)
     with urllib.request.urlopen(req, timeout=timeout) as r:
