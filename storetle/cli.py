@@ -68,6 +68,17 @@ def _open_reader(src):
 
 
 _verified_bridge = None
+_verified_notice = None
+
+
+def _verified_note(msg):
+    """Print a verified-pipeline notice to stderr once per process, so a
+    `get`/`stream --verified` run visibly says which path did the extraction
+    without spamming the notice for every document in a stream."""
+    global _verified_notice
+    if _verified_notice != msg:
+        print('[storetle] ' + msg, file=sys.stderr)
+        _verified_notice = msg
 
 
 def _verified_extract(html_bytes):
@@ -89,13 +100,17 @@ def _verified_extract(html_bytes):
             from .verified_bridge import VerifiedBridge
             if _verified_bridge is None:
                 _verified_bridge = VerifiedBridge()
-            return _verified_bridge.extract(html_bytes)
+            out = _verified_bridge.extract(html_bytes)
+            _verified_note('VERIFIED: extracted with the local Lean-proved pipeline')
+            return out
         except Exception:
             pass
     # (1b) a locally-installed verified wheel, if present and loadable
     try:
         from storetle_verified import html_to_plaintext
-        return html_to_plaintext(html_bytes).encode('utf-8')
+        out = html_to_plaintext(html_bytes).encode('utf-8')
+        _verified_note('VERIFIED: extracted with the local Lean-proved pipeline')
+        return out
     except Exception:
         pass
     # (2) the storetle API's verified pipeline (runs the Lean-proved extractor
@@ -111,7 +126,9 @@ def _verified_extract(html_bytes):
         req.add_header('User-Agent', _r._UA)
         req.add_header('Content-Type', 'application/octet-stream')
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return _json.loads(resp.read().decode())['text'].encode('utf-8')
+            out = _json.loads(resp.read().decode())['text'].encode('utf-8')
+        _verified_note("VERIFIED: extracted by storetle's Lean-proved pipeline (server-side)")
+        return out
     except Exception:
         pass
     # (3) last resort: fast local extraction, never hard-error
