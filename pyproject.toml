@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "storetle"
-version = "0.5.0"
+version = "0.5.1"
 description = "HTML-aware compression for document corpora — solid-archive ratios with random access"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -23,11 +23,11 @@ classifiers = [
 
 # No hard Python dependencies — stdlib + system libzstd via ctypes.
 # lxml is optional but strongly recommended for encoding throughput.
-dependencies = []
+dependencies = ["pynacl", "opentimestamps-client"]
 
 [project.optional-dependencies]
 fast = ["lxml"]
-verify = ["pynacl", "opentimestamps-client"]
+verify = []  # now in base; kept for back-compat
 
 [project.urls]
 Homepage = "https://github.com/adventurelands/storetle"
