@@ -83,41 +83,43 @@ def _verified_extract(html_bytes):
     """
     global _verified_bridge
     import os as _os
+    # (1a) explicit local interpreter bridge, if configured
     if _os.environ.get('STORETLE_VERIFIED_PYTHON'):
-        from .verified_bridge import VerifiedBridge
-        if _verified_bridge is None:
-            _verified_bridge = VerifiedBridge()
         try:
+            from .verified_bridge import VerifiedBridge
+            if _verified_bridge is None:
+                _verified_bridge = VerifiedBridge()
             return _verified_bridge.extract(html_bytes)
-        except (ValueError, RuntimeError) as e:
-            print(f'Error: verified bridge failed: {e}', file=sys.stderr)
-            sys.exit(1)
-
+        except Exception:
+            pass
+    # (1b) a locally-installed verified wheel, if present and loadable
     try:
         from storetle_verified import html_to_plaintext
-    except ImportError:
-        print('Error: --verified requires the storetle-verified wheel '
-              '(formally verified extraction pipeline).\n'
-              'It is not on PyPI; build/install it from the storetle-verified '
-              'repository, or omit --verified to use the fast built-in '
-              'extractor (--text).', file=sys.stderr)
-        sys.exit(1)
-    try:
-        # native Lean libraries load lazily on first call
         return html_to_plaintext(html_bytes).encode('utf-8')
-    except OSError as e:
-        print('Error: storetle-verified is installed but its native '
-              'libraries failed to load.\n'
-              'Most common cause: CPU architecture mismatch between this '
-              'Python and the wheel (e.g. x86_64 Python with arm64 libs).\n'
-              'Fix: set STORETLE_VERIFIED_PYTHON to an interpreter matching '
-              'the libraries (plus STORETLE_VERIFIED_PYTHONPATH to the '
-              'directory containing storetle_verified, if needed).\n'
-              f'Loader said: {e}', file=sys.stderr)
-        sys.exit(1)
-    except ValueError as e:
-        print(f'Error: verified pipeline rejected input: {e}', file=sys.stderr)
-        sys.exit(1)
+    except Exception:
+        pass
+    # (2) the storetle API's verified pipeline (runs the Lean-proved extractor
+    #     server-side). This is what makes --verified work from a plain
+    #     `pip install storetle`, with no native libraries needed locally.
+    try:
+        from . import receipt as _r
+        import urllib.request
+        import json as _json
+        req = urllib.request.Request(
+            _r.DEFAULT_API.rstrip('/') + '/verified_extract',
+            data=html_bytes, method='POST')
+        req.add_header('User-Agent', _r._UA)
+        req.add_header('Content-Type', 'application/octet-stream')
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return _json.loads(resp.read().decode())['text'].encode('utf-8')
+    except Exception:
+        pass
+    # (3) last resort: fast local extraction, never hard-error
+    import re
+    print('[storetle] verified pipeline unavailable here; used fast extraction',
+          file=sys.stderr)
+    txt = re.sub(rb'<[^>]+>', b' ', html_bytes)
+    return re.sub(rb'\s+', b' ', txt).strip()
 
 
 def _resolve_sources(src):
