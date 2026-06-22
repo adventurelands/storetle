@@ -26,7 +26,7 @@ decompressing the rest — locally, or straight off object storage.
 pip: storetle (Python, read/write)  ·  rust/: storetle-rs (Rust, read)  ·  web/: read .storetle in the browser
 ```
 
-## The honest benchmark
+## The benchmark
 
 Two different questions, two tables. Corpus: 10 real pages (Wikipedia,
 arXiv abstracts, PLOS articles), 1.75 MB raw HTML, measured June 2026.
@@ -185,7 +185,7 @@ matters more than speed.
 storetle get wiki "Black hole" --verified
 ```
 
-Honest notes: it's slower than `--text` (re-parses via the proved WHATWG
+Notes: it's slower than `--text` (re-parses via the proved WHATWG
 tokenizer), its whitespace conventions differ from the fast extractor, and
 the wheel ships separately (native Lean libraries; not on PyPI — the flag
 explains how to get it if missing).
@@ -199,7 +199,7 @@ exactly which bytes you were served:
 storetle stream uspto --text --verified --receipt | python train.py
 ```
 
-`--receipt` writes a self-contained `uspto.receipt.zip`. Here is the honest
+`--receipt` writes a self-contained `uspto.receipt.zip`. Here is the
 description of what it proves, and what it does not:
 
 - With `--receipt`, the stream runs **through the storetle API**, which hashes
