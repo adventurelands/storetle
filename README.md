@@ -16,27 +16,56 @@ pip: storetle (Python, read/write)  ·  rust/: storetle-rs (Rust, read)  ·  web
 
 Two different questions, two tables. Corpus: 10 real pages (Wikipedia,
 arXiv abstracts, PLOS articles), 1.75 MB raw HTML, measured June 2026.
-Reproduce with `storetle bench <folder>`.
+
+**What `storetle bench <folder>` actually reproduces:** the gzip-WARC,
+gzip-per-file, and storetle rows on **your own data** — that is the
+**−46% vs gzip WARC** headline below, and it is fully reproducible from
+the shipped CLI. The zstd and tar rows are **measured manually with the
+system `zstd`/`tar` tools** (commands below); `storetle bench` does not
+emit them. They are included for context, not as tool output.
 
 **1. Among formats with random access** (you can extract one doc without
 decompressing everything before it — this is how WARC is actually deployed):
 
-| method | bytes | vs deployed standard |
+| method | bytes | vs deployed standard | source |
+|---|---|---|---|
+| per-record gzip -9 (standard WARC) | 373,626 | — | `storetle bench` |
+| per-record zstd -19 | 325,807 | −12.8% | manual (see below) |
+| per-record zstd -19 + trained dict | 274,226 | −26.6% | manual (see below) |
+| **storetle** | **200,598** | **−46.3%** | `storetle bench` |
+
+**2. Against solid archives** (maximum compression, no random access) —
+**all rows except storetle are measured manually**, not from `storetle bench`:
+
+| method | bytes | source |
 |---|---|---|
-| per-record gzip -9 (standard WARC) | 373,626 | — |
-| per-record zstd -19 | 325,807 | −12.8% |
-| per-record zstd -19 + trained dict | 274,226 | −26.6% |
-| **storetle** | **200,598** | **−46.3%** |
+| tar + gzip -9 | 370,307 | manual |
+| tar + zstd -19 | 220,512 | manual |
+| tar + zstd -22 --long | 220,422 | manual |
+| tar + zstd -22 + trained dict | 204,386 | manual |
+| **storetle (keeps random access)** | **200,598** | `storetle bench` |
 
-**2. Against solid archives** (maximum compression, no random access):
+<details>
+<summary>Exact commands for the manually-measured rows</summary>
 
-| method | bytes |
-|---|---|
-| tar + gzip -9 | 370,307 |
-| tar + zstd -19 | 220,512 |
-| tar + zstd -22 --long | 220,422 |
-| tar + zstd -22 + trained dict | 204,386 |
-| **storetle (keeps random access)** | **200,598** |
+```bash
+# corpus/ = the 10 .html files; sizes are bytes of the resulting blobs.
+# per-record (random-access) zstd:
+for f in corpus/*.html; do zstd -19 -q -o "$f.zst" "$f"; done   # sum sizes → 325,807
+zstd --train corpus/*.html -o corpus.dict                        # trained dictionary
+for f in corpus/*.html; do zstd -19 -D corpus.dict -q -o "$f.zd" "$f"; done  # → 274,226
+
+# solid archives (no random access):
+tar cf - corpus | gzip -9            | wc -c   # → 370,307
+tar cf - corpus | zstd -19           | wc -c   # → 220,512
+tar cf - corpus | zstd -22 --long    | wc -c   # → 220,422
+tar cf - corpus | zstd -22 -D corpus.dict | wc -c   # → 204,386
+```
+
+`storetle bench corpus/` produces the gzip-WARC, gzip-per-file, and
+storetle numbers directly. Extending the bench tool to also shell out to
+`zstd`/`tar` so these rows are auto-generated is on the roadmap.
+</details>
 
 Storetle matches solid zstd-22 while remaining randomly accessible. The
 margin comes from three things: HTML-aware encoding (tags/attributes become
@@ -47,7 +76,13 @@ separate streams), a 1 MB dictionary trained on the binary encoding, and
 On larger corpora measured against gzip WARC: 28.4% smaller on 3,000 live
 Common Crawl docs (348.6 MB), 27–82% on same-domain collections (191 pages,
 20 domains) where template sharing is strongest. Round-trip verified on all
-of the above. Stream it yourself: `python3 bench_cc.py --docs 3000`.
+of the above — **structurally, not byte-exactly**: every tag, attribute,
+text node, comment, and script/style body is recovered, but HTML is
+re-serialized (whitespace/indentation differ). See
+[Limitations](#limitations--read-these). (Note: `storetle bench`'s own
+`roundtrip_ok` flag only checks that the document *count* matches; the
+structural fidelity is validated separately by `stress_test.py`.) Stream it
+yourself: `python3 bench_cc.py --docs 3000`.
 
 ## Install
 
@@ -123,9 +158,14 @@ of readable text.
 `--verified` on `get`/`unpack` routes plaintext extraction through
 [storetle-verified](https://github.com/adventurelands) — a Lean 4 pipeline
 whose tokenizer, tree builder, and extraction carry machine-checked proofs
-(621 theorems: script/style content provably never reaches output,
-extraction provably deterministic). For corpora where provenance matters
-more than speed.
+(hundreds of theorems; the load-bearing ones prove script/style content
+never reaches the output and that ≈-equivalent documents yield identical
+plaintext). The headline guarantee is the no-script/no-style/no-comment
+leakage result, not raw theorem count. (Note: determinism here is inherent
+to pure functions, not an earned theorem — the verified repo's own README is
+explicit about which lemmas are vacuous and that the extracted C is trusted,
+not independently proven equal to the spec.) For corpora where provenance
+matters more than speed.
 
 ```bash
 storetle get wiki "Black hole" --verified
