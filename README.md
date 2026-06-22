@@ -1,5 +1,19 @@
 # Storetle
 
+## In plain English
+
+Training an AI takes enormous piles of downloaded web pages, and those piles eat
+up a huge amount of disk. Storetle squeezes them down much smaller than the usual
+method (about 46% smaller than the standard gzipped web-archive format) — but
+unlike a normal zip file, you can still reach in and grab any single page
+instantly without unpacking the whole thing. Think of it as a vacuum-sealed
+filing cabinet: way less space, but every folder is still right there when you
+need it. A companion math proof (in the `storetle-verified` repo) double-checks
+that the step which strips out junk like scripts and styling can never
+accidentally leave that junk in the cleaned text.
+
+---
+
 **HTML-aware compression for document corpora — solid-archive ratios with random access.**
 
 Storetle stores large collections of HTML (web crawls, academic corpora,
