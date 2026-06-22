@@ -14,13 +14,13 @@ accidentally leave that junk in the cleaned text.
 
 ---
 
-**HTML-aware compression for document corpora — solid-archive ratios with random access.**
+**HTML-aware compression for document corpora: solid-archive ratios with random access.**
 
 Storetle stores large collections of HTML (web crawls, academic corpora,
 training datasets) in a format that is ~46% smaller than the per-record
 gzip WARC files the web-archiving world ships today, while still letting
 you pull any single document out of a multi-gigabyte archive without
-decompressing the rest — locally, or straight off object storage.
+decompressing the rest, locally, or straight off object storage.
 
 ```
 pip: storetle (Python, read/write)  ·  rust/: storetle-rs (Rust, read)  ·  web/: read .storetle in the browser
@@ -32,23 +32,23 @@ Two different questions, two tables. Corpus: 10 real pages (Wikipedia,
 arXiv abstracts, PLOS articles), 1.75 MB raw HTML, measured June 2026.
 
 **What `storetle bench <folder>` actually reproduces:** the gzip-WARC,
-gzip-per-file, and storetle rows on **your own data** — that is the
+gzip-per-file, and storetle rows on **your own data**, that is the
 **−46% vs gzip WARC** headline below, and it is fully reproducible from
 the shipped CLI. The zstd and tar rows are **measured manually with the
 system `zstd`/`tar` tools** (commands below); `storetle bench` does not
 emit them. They are included for context, not as tool output.
 
 **1. Among formats with random access** (you can extract one doc without
-decompressing everything before it — this is how WARC is actually deployed):
+decompressing everything before it; this is how WARC is actually deployed):
 
 | method | bytes | vs deployed standard | source |
 |---|---|---|---|
-| per-record gzip -9 (standard WARC) | 373,626 | — | `storetle bench` |
+| per-record gzip -9 (standard WARC) | 373,626 | n/a | `storetle bench` |
 | per-record zstd -19 | 325,807 | −12.8% | manual (see below) |
 | per-record zstd -19 + trained dict | 274,226 | −26.6% | manual (see below) |
 | **storetle** | **200,598** | **−46.3%** | `storetle bench` |
 
-**2. Against solid archives** (maximum compression, no random access) —
+**2. Against solid archives** (maximum compression, no random access):
 **all rows except storetle are measured manually**, not from `storetle bench`:
 
 | method | bytes | source |
@@ -90,10 +90,10 @@ separate streams), a 1 MB dictionary trained on the binary encoding, and
 On larger corpora measured against gzip WARC: 28.4% smaller on 3,000 live
 Common Crawl docs (348.6 MB), 27–82% on same-domain collections (191 pages,
 20 domains) where template sharing is strongest. Round-trip verified on all
-of the above — **structurally, not byte-exactly**: every tag, attribute,
+of the above, **structurally, not byte-exactly**: every tag, attribute,
 text node, comment, and script/style body is recovered, but HTML is
 re-serialized (whitespace/indentation differ). See
-[Limitations](#limitations--read-these). (Note: `storetle bench`'s own
+[Limitations](#limitations-read-these). (Note: `storetle bench`'s own
 `roundtrip_ok` flag only checks that the document *count* matches; the
 structural fidelity is validated separately by `stress_test.py`.) Stream it
 yourself: `python3 bench_cc.py --docs 3000`.
@@ -105,7 +105,7 @@ brew install zstd        # macOS   (Ubuntu: apt install libzstd-dev)
 pip install storetle
 ```
 
-No Python dependencies — stdlib plus system libzstd via ctypes (brotli
+No Python dependencies: stdlib plus system libzstd via ctypes (brotli
 fallback if zstd is missing). `lxml` is optional but strongly recommended
 for encoding speed.
 
@@ -122,7 +122,7 @@ storetle to-warc   archive.storetle out.warc.gz
 storetle train     my_corpus/ --output my.bin     # domain-specific dictionary
 ```
 
-## Hosted corpora — free
+## Hosted corpora (free)
 
 ```bash
 storetle corpora                                  # list what's available
@@ -132,10 +132,10 @@ storetle get copyright "Beyond the sea" --text    # a 1995 catalog assignment
 ```
 
 Corpus names resolve through a public registry
-(`https://data.davisbrief.com/corpora.json`) — new corpora appear without a
+(`https://data.davisbrief.com/corpora.json`): new corpora appear without a
 package update. Title lookup fetches a small index once and caches it.
 
-**Available now — Simple English Wikipedia, complete** (267,503 articles,
+**Available now: Simple English Wikipedia, complete** (267,503 articles,
 snapshot 2025-03-20, CC-BY-SA-4.0):
 
 | edition | size | contents |
@@ -146,12 +146,12 @@ snapshot 2025-03-20, CC-BY-SA-4.0):
 
 All under `https://data.davisbrief.com/simplewiki/` with JSONL metadata
 indexes and a SHA-256 manifest. The entire text of Simple English Wikipedia
-in 196 MB, where any article is one ~2 MB range request away — that's the
+in 196 MB, where any article is one ~2 MB range request away, that's the
 point of the format.
 
 **US Copyright Office public records** (5,929,094 documents, snapshot
 2026-01, public domain): every recordation (catalog assignments, transfers,
-security interests — 15.3M source rows grouped into 658,596 documents) plus
+security interests, 15.3M source rows grouped into 658,596 documents) plus
 4.5M musical-work and 760K sound-recording registrations, parsed from the
 official data.copyright.gov bulk files with per-record validation
 (~2K malformed records quarantined, stats in the manifest). Under
@@ -161,7 +161,7 @@ Central OA) coming.
 ## Plain text extraction (v0.2.2)
 
 `--text` on `get`/`unpack` (and `get_text()`/`iter_text()` in the API)
-extracts tag-stripped clean text **without re-parsing HTML** — the encoding
+extracts tag-stripped clean text **without re-parsing HTML**: the encoding
 already separates structure from content, so text extraction is a walk over
 the structure opcodes that keeps text nodes, drops script/style bodies, and
 emits newlines at block boundaries. A 383 KB Wikipedia article becomes 39 KB
@@ -170,13 +170,13 @@ of readable text.
 ## Formally verified extraction (v0.4.0)
 
 `--verified` on `get`/`unpack` routes plaintext extraction through
-[storetle-verified](https://github.com/adventurelands) — a Lean 4 pipeline
+[storetle-verified](https://github.com/adventurelands): a Lean 4 pipeline
 whose tokenizer, tree builder, and extraction carry machine-checked proofs
 (hundreds of theorems; the load-bearing ones prove script/style content
 never reaches the output and that ≈-equivalent documents yield identical
 plaintext). The headline guarantee is the no-script/no-style/no-comment
 leakage result, not raw theorem count. (Note: determinism here is inherent
-to pure functions, not an earned theorem — the verified repo's own README is
+to pure functions, not an earned theorem; the verified repo's own README is
 explicit about which lemmas are vacuous and that the extracted C is trusted,
 not independently proven equal to the spec.) For corpora where provenance
 matters more than speed.
@@ -187,7 +187,7 @@ storetle get wiki "Black hole" --verified
 
 Notes: it's slower than `--text` (re-parses via the proved WHATWG
 tokenizer), its whitespace conventions differ from the fast extractor, and
-the wheel ships separately (native Lean libraries; not on PyPI — the flag
+the wheel ships separately (native Lean libraries; not on PyPI; the flag
 explains how to get it if missing).
 
 ## Streaming a corpus, with a Bitcoin-anchored receipt (v0.5.0)
@@ -225,7 +225,7 @@ description of what it proves, and what it does not:
 
 What it proves: the corpus bytes you trained on were served by storetle and
 committed to a root storetle signed and anchored in Bitcoin. What it does not
-prove: that any particular model consumed them — the training loop is yours;
+prove: that any particular model consumed them; the training loop is yours;
 storetle is the verifiable data tap, not the trainer.
 
 Verifying needs the verifier extras: `pip install 'storetle[verify]'`.
@@ -233,7 +233,7 @@ Verifying needs the verifier extras: `pip install 'storetle[verify]'`.
 ## Remote archives (v0.2.1)
 
 `get`, `info`, and `unpack` accept URLs. Opening an archive costs a few KB
-of Range requests; fetching a document downloads only its ~2MB chunk — no
+of Range requests; fetching a document downloads only its ~2MB chunk, no
 server-side code, works against any Range-capable host (R2, S3, GitHub
 Pages, nginx):
 
@@ -267,7 +267,7 @@ with storetle.StreamReader('archive.storetle') as r:
 
 ## Rust reader
 
-A read-only Rust implementation lives in [`rust/`](rust/) — library plus a
+A read-only Rust implementation lives in [`rust/`](rust/): library plus a
 `storetle-rs` CLI (`ls` / `get` / `unpack`), differentially tested
 byte-for-byte against the Python decoder.
 
@@ -278,27 +278,27 @@ WebAssembly. Drop a `.storetle` file onto the page and browse its documents.
 
 ## How it works
 
-1. **Parse** — HTML is tokenized to a node stream (lxml fast path, pure-Python fallback).
-2. **Encode** — tags and attribute names become 1-byte IDs from a fixed
+1. **Parse**: HTML is tokenized to a node stream (lxml fast path, pure-Python fallback).
+2. **Encode**: tags and attribute names become 1-byte IDs from a fixed
    vocabulary (130 tags, 163 attributes, 1,394 shared strings).
    `class="flex items-center gap-4"` is split into per-token vocabulary
    lookups. Structure and text go to separate streams.
-3. **Chunk** — up to 256 docs / 2 MiB are concatenated, preserving
+3. **Chunk**: up to 256 docs / 2 MiB are concatenated, preserving
    cross-document redundancy.
-4. **Compress** — zstd-22 with a 1 MB dictionary trained on the binary
+4. **Compress**: zstd-22 with a 1 MB dictionary trained on the binary
    encoding (ships with the codec).
-5. **Index** — a footer index maps documents to chunks, so readers seek
+5. **Index**: a footer index maps documents to chunks, so readers seek
    instead of scanning. Works over HTTP range requests against plain
    object storage.
 
 Full byte-level spec: [FORMAT.md](FORMAT.md).
 
-## Limitations — read these
+## Limitations (read these)
 
 - **Structural, not byte-exact.** Reconstructed HTML preserves every tag,
   attribute, text node, comment, and script/style body, but is
   re-serialized (indentation and inter-tag whitespace differ). Fine for
-  corpora and ML pipelines; **wrong for byte-exact archival** — if you need
+  corpora and ML pipelines; **wrong for byte-exact archival**: if you need
   forensic fidelity, use WARC.
 - **HTML only.** `from-warc` keeps HTML response records and skips
   everything else. A raw passthrough mode for JSON/text is on the roadmap.
