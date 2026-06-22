@@ -4,7 +4,7 @@
 
 Training an AI takes enormous piles of downloaded web pages, and those piles eat
 up a huge amount of disk. Storetle squeezes them down much smaller than the usual
-method (about 46% smaller than the standard gzipped web-archive format) — but
+method (about 46% smaller than the standard gzipped web-archive format), but
 unlike a normal zip file, you can still reach in and grab any single page
 instantly without unpacking the whole thing. Think of it as a vacuum-sealed
 filing cabinet: way less space, but every folder is still right there when you
